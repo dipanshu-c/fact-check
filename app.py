@@ -20,6 +20,14 @@ from scipy.sparse import hstack
 from sklearn.base import BaseEstimator, TransformerMixin
 
 load_dotenv()
+# Logging (add this near the top of app.py, right after imports)
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
