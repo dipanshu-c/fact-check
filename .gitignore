@@ -5,3 +5,4 @@ __pycache__/
 scripts/
 data/
 train.fakenews.py
+data/*.csv
