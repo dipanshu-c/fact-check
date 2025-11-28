@@ -1,0 +1,1670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FakeCheck - News Authenticity Detector</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #f5f7fa;
+      color: #2c3e50;
+      line-height: 1.6;
+    }
+
+    /* Auth Screen Styles */
+    .auth-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .auth-box {
+      background: #ffffff;
+      padding: 40px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .auth-box h1 {
+      font-size: 28px;
+      margin-bottom: 10px;
+      color: #2563eb;
+      text-align: center;
+    }
+
+    .auth-box p {
+      text-align: center;
+      color: #6b7280;
+      margin-bottom: 30px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+      color: #2c3e50;
+    }
+
+    .form-group input,
+    .form-group textarea,
+    .form-group select {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: border-color 0.2s;
+    }
+
+    .form-group input:focus,
+    .form-group textarea:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: #2563eb;
+    }
+
+    .form-group textarea {
+      resize: vertical;
+      min-height: 100px;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 12px;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn:hover {
+      background: #1d4ed8;
+    }
+
+    .btn:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+
+    .auth-toggle {
+      text-align: center;
+      margin-top: 20px;
+      color: #6b7280;
+    }
+
+    .auth-toggle a {
+      color: #2563eb;
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .auth-toggle a:hover {
+      text-decoration: underline;
+    }
+
+    .error-message {
+      background: #fef2f2;
+      color: #ef4444;
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      border: 1px solid #fecaca;
+      font-size: 14px;
+    }
+
+    .success-message {
+      background: #d1fae5;
+      color: #10b981;
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      border: 1px solid #a7f3d0;
+      font-size: 14px;
+    }
+
+    /* App Container */
+    .app-container {
+      display: none;
+      min-height: 100vh;
+    }
+
+    /* Header */
+    .header {
+      background: #ffffff;
+      border-bottom: 1px solid #ddd;
+      padding: 0 20px;
+    }
+
+    .header-content {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      height: 64px;
+    }
+
+    .logo {
+      font-size: 24px;
+      font-weight: 700;
+      color: #2563eb;
+    }
+
+    .nav {
+      display: flex;
+      gap: 30px;
+      align-items: center;
+    }
+
+    .nav-link {
+      color: #2c3e50;
+      text-decoration: none;
+      font-weight: 500;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+
+    .nav-link:hover,
+    .nav-link.active {
+      color: #2563eb;
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .user-email {
+      color: #6b7280;
+      font-size: 14px;
+    }
+
+    .logout-btn {
+      background: #ef4444;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+
+    .logout-btn:hover {
+      background: #dc2626;
+    }
+
+    /* Main Content */
+    .main-content {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+
+    .section {
+      display: none;
+    }
+
+    .section.active {
+      display: block;
+    }
+
+    .section-title {
+      font-size: 28px;
+      margin-bottom: 30px;
+      color: #2c3e50;
+    }
+
+    /* Stats Cards */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-bottom: 40px;
+    }
+
+    .stat-card {
+      background: #ffffff;
+      padding: 24px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+    }
+
+    .stat-label {
+      color: #6b7280;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-size: 32px;
+      font-weight: 700;
+      color: #2563eb;
+    }
+
+    /* Table */
+    .table-container {
+      background: #ffffff;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      background: #f3f4f6;
+      padding: 12px;
+      text-align: left;
+      font-weight: 600;
+      color: #2c3e50;
+      border-bottom: 1px solid #ddd;
+    }
+
+    td {
+      padding: 12px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #6b7280;
+    }
+
+    /* Analyze Form */
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 30px;
+      border-bottom: 2px solid #ddd;
+    }
+
+    .tab {
+      padding: 12px 24px;
+      background: none;
+      border: none;
+      color: #6b7280;
+      font-weight: 500;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: all 0.2s;
+    }
+
+    .tab.active {
+      color: #2563eb;
+      border-bottom-color: #2563eb;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .analyze-form {
+      background: #ffffff;
+      padding: 30px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      margin-bottom: 30px;
+    }
+
+    /* Results */
+    .results {
+      background: #ffffff;
+      padding: 30px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+    }
+
+    .verdict {
+      display: inline-block;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-weight: 600;
+      margin-bottom: 20px;
+    }
+
+    .verdict.real {
+      background: #d1fae5;
+      color: #10b981;
+    }
+
+    .verdict.fake {
+      background: #fee2e2;
+      color: #ef4444;
+    }
+
+    .verdict.uncertain {
+      background: #fef3c7;
+      color: #f59e0b;
+    }
+
+    .score-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin-top: 20px;
+    }
+
+    .score-item {
+      text-align: center;
+      padding: 20px;
+      background: #f3f4f6;
+      border-radius: 8px;
+    }
+
+    .score-label {
+      color: #6b7280;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .score-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #2563eb;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: #6b7280;
+    }
+
+    /* Modal */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 8px;
+      padding: 30px;
+      width: 90%;
+      max-width: 500px;
+      position: relative;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .modal-title {
+      font-size: 24px;
+      font-weight: 600;
+      color: #2c3e50;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 28px;
+      color: #6b7280;
+      cursor: pointer;
+      padding: 0;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+
+    .modal-close:hover {
+      background: #f3f4f6;
+    }
+
+    .add-review-btn {
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      font-weight: 500;
+      cursor: pointer;
+      margin-top: 20px;
+      transition: background 0.2s;
+    }
+
+    .add-review-btn:hover {
+      background: #1d4ed8;
+    }
+
+    .community-reviews {
+      margin-top: 30px;
+      padding-top: 30px;
+      border-top: 2px solid #ddd;
+    }
+
+    .review-item {
+      background: #f3f4f6;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 12px;
+    }
+
+    .review-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .review-user {
+      font-weight: 600;
+      color: #2c3e50;
+    }
+
+    .review-verdict {
+      font-size: 14px;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-weight: 500;
+    }
+
+    .review-verdict.real {
+      background: #d1fae5;
+      color: #10b981;
+    }
+
+    .review-verdict.fake {
+      background: #fee2e2;
+      color: #ef4444;
+    }
+
+    .review-verdict.uncertain {
+      background: #fef3c7;
+      color: #f59e0b;
+    }
+
+    .review-text {
+      color: #4b5563;
+      line-height: 1.5;
+    }
+
+    .source-item {
+      background: #ffffff;
+      padding: 20px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .source-info h4 {
+      margin-bottom: 4px;
+      color: #2c3e50;
+    }
+
+    .source-url {
+      color: #6b7280;
+      font-size: 14px;
+    }
+
+    .rate-btn {
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+
+    .rate-btn:hover {
+      background: #1d4ed8;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .header-content {
+        flex-direction: column;
+        height: auto;
+        padding: 15px 0;
+      }
+
+      .nav {
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .user-info {
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .table-container {
+        overflow-x: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Auth Container (Login/Register) -->
+  <div id="authContainer" class="auth-container">
+    <div class="auth-box">
+      <!-- Login Form -->
+      <div id="loginForm">
+        <h1>FakeCheck</h1>
+        <p>Detect fake news with AI-powered analysis</p>
+        <div id="loginError" class="error-message" style="display: none;"></div>
+        <form id="loginFormElement" onsubmit="handleLogin(event)">
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="loginEmail" required placeholder="Enter your email">
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <input type="password" id="loginPassword" required placeholder="Enter your password">
+          </div>
+          <button type="submit" class="btn" id="loginBtn">Login</button>
+        </form>
+        <div class="auth-toggle">
+          Don't have an account? <a href="#" onclick="showRegister(event)">Click here to register</a>
+        </div>
+      </div>
+
+      <!-- Register Form -->
+      <div id="registerForm" style="display: none;">
+        <h1>Create Account</h1>
+        <p>Join FakeCheck to start analyzing news</p>
+        <div id="registerError" class="error-message" style="display: none;"></div>
+        <form id="registerFormElement" onsubmit="handleRegister(event)">
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="registerEmail" required placeholder="Enter your email">
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <input type="password" id="registerPassword" required placeholder="Create a password" minlength="6">
+          </div>
+          <button type="submit" class="btn" id="registerBtn">Register</button>
+        </form>
+        <div class="auth-toggle">
+          Already have an account? <a href="#" onclick="showLogin(event)">Click here to login</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- App Container (After Login) -->
+  <div id="appContainer" class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-content">
+        <div class="logo">FakeCheck</div>
+        <nav class="nav">
+          <!-- existing links -->
+          <a class="nav-link" onclick="showSection('dashboard')">Dashboard</a>
+          <a class="nav-link" onclick="showSection('analyze')">Analyze</a>
+          <a class="nav-link" onclick="showSection('history')">History</a>
+          <a class="nav-link" onclick="showSection('sources')">Sources</a>
+          <a class="nav-link" onclick="showSection('reviews')">Reviews</a>
+
+          <!-- admin link (hidden by default, shown only for admin users) -->
+          <a id="adminNavLink" class="nav-link" style="display:none;" onclick="showSection('admin')">Admin</a>
+        </nav>
+        <div class="user-info">
+          <span class="user-email" id="userEmail"></span>
+          <button class="logout-btn" onclick="handleLogout()">Logout</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Admin Section (visible only to admins) -->
+    <section id="adminSection" class="section">
+      <h2 class="section-title">Admin — Train Model</h2>
+
+      <div class="analyze-form" style="max-width:900px;">
+        <form id="trainForm" onsubmit="handleTrain(event)">
+          <div class="form-group">
+            <label>CSV file (required)</label>
+            <input type="file" id="trainFile" accept=".csv" required />
+          </div>
+
+          <div class="form-group">
+            <label>Headline column</label>
+            <input type="text" id="trainHeadlineCol" value="headline" placeholder="headline" />
+          </div>
+
+          <div class="form-group">
+            <label>Content column</label>
+            <input type="text" id="trainContentCol" value="content" placeholder="content" />
+          </div>
+
+          <div class="form-group">
+            <label>Label column</label>
+            <input type="text" id="trainLabelCol" value="label" placeholder="label" />
+          </div>
+
+          <div class="form-group">
+            <label>Classifier</label>
+            <select id="trainClassifier">
+              <option value="rf">RandomForest</option>
+              <option value="logreg">LogisticRegression</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Test size (0.0 - 0.5)</label>
+            <input type="number" id="trainTestSize" step="0.05" min="0.0" max="0.5" value="0.2" />
+          </div>
+
+          <button type="submit" class="btn" id="trainBtn">Start Training</button>
+        </form>
+
+        <div id="trainStatus" style="margin-top:16px;"></div>
+
+        <div id="trainResults" style="margin-top:20px; display:none;">
+          <h3>Training results</h3>
+          <div id="trainSummary"></div>
+          <pre id="trainArtifact" style="background:#f3f4f6; padding:12px; border-radius:6px; overflow:auto;"></pre>
+        </div>
+      </div>
+    </section>
+
+      <!-- Dashboard Section -->
+      <section id="dashboardSection" class="section active">
+        <h2 class="section-title">Dashboard</h2>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Total Analyses</div>
+            <div class="stat-value" id="totalAnalyses">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Your Reviews</div>
+            <div class="stat-value" id="yourReviews">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Accuracy Score</div>
+            <div class="stat-value" id="accuracyScore">0%</div>
+          </div>
+        </div>
+
+        <h3 style="margin-bottom: 20px;">Recent Analyses</h3>
+        <div class="table-container" id="recentAnalysesTable">
+          <div class="empty-state">No analyses yet. Start by analyzing some news!</div>
+        </div>
+      </section>
+
+      <!-- Analyze Section -->
+      <section id="analyzeSection" class="section">
+        <h2 class="section-title">Analyze News</h2>
+        
+        <div class="tabs">
+          <button class="tab active" onclick="showTab('text')">Text Analysis</button>
+          <button class="tab" onclick="showTab('url')">URL Analysis</button>
+        </div>
+
+        <!-- Text Tab -->
+        <div id="textTab" class="tab-content active">
+          <div class="analyze-form">
+            <form id="textAnalyzeForm" onsubmit="handleAnalyze(event, 'text')">
+              <div class="form-group">
+                <label>Headline</label>
+                <input type="text" id="textHeadline" required placeholder="Enter news headline">
+              </div>
+              <div class="form-group">
+                <label>Content</label>
+                <textarea id="textContent" required placeholder="Enter news content"></textarea>
+              </div>
+              <div class="form-group">
+                <label>Category (Optional)</label>
+                <select id="textCategory">
+                  <option value="">Select category</option>
+                  <option value="politics">Politics</option>
+                  <option value="health">Health</option>
+                  <option value="technology">Technology</option>
+                  <option value="entertainment">Entertainment</option>
+                  <option value="sports">Sports</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <button type="submit" class="btn" id="textAnalyzeBtn">Analyze News</button>
+            </form>
+          </div>
+        </div>
+
+        <!-- URL Tab -->
+        <div id="urlTab" class="tab-content">
+          <div class="analyze-form">
+            <form id="urlAnalyzeForm" onsubmit="handleAnalyze(event, 'url')">
+              <div class="form-group">
+                <label>News URL</label>
+                <input type="url" id="newsUrl" required placeholder="Enter news article URL">
+              </div>
+              <div class="form-group">
+                <label>Category (Optional)</label>
+                <select id="urlCategory">
+                  <option value="">Select category</option>
+                  <option value="politics">Politics</option>
+                  <option value="health">Health</option>
+                  <option value="technology">Technology</option>
+                  <option value="entertainment">Entertainment</option>
+                  <option value="sports">Sports</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <button type="submit" class="btn" id="urlAnalyzeBtn">Analyze News</button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Results -->
+        <div id="analysisResults" style="display: none;">
+          <h3 style="margin-bottom: 20px;">Analysis Results</h3>
+          <div class="results">
+            <div id="verdictDisplay"></div>
+            <div class="score-grid">
+              <div class="score-item">
+                <div class="score-label">Confidence</div>
+                <div class="score-value" id="confidenceScore">-</div>
+              </div>
+              <div class="score-item">
+                <div class="score-label">LSTM Score</div>
+                <div class="score-value" id="lstmScore">-</div>
+              </div>
+              <div class="score-item">
+                <div class="score-label">CGPNN Score</div>
+                <div class="score-value" id="cgpnnScore">-</div>
+              </div>
+              <div class="score-item">
+                <div class="score-label">Combined Score</div>
+                <div class="score-value" id="combinedScore">-</div>
+              </div>
+            </div>
+            
+            <!-- Add Review Button -->
+            <button class="add-review-btn" onclick="openReviewModal()">📝 Add Your Review</button>
+            
+            <!-- Community Reviews -->
+            <div class="community-reviews">
+              <h3 style="margin-bottom: 20px;">Community Reviews</h3>
+              <div id="communityReviewsList">
+                <div class="loading">Loading reviews...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- History Section -->
+      <section id="historySection" class="section">
+        <h2 class="section-title">Analysis History</h2>
+        <div class="table-container" id="historyTable">
+          <div class="empty-state">No analysis history yet.</div>
+        </div>
+      </section>
+
+      <!-- Sources Section -->
+      <section id="sourcesSection" class="section">
+        <h2 class="section-title">Verified Sources</h2>
+        <div id="sourcesList">
+          <div class="loading">Loading sources...</div>
+        </div>
+      </section>
+
+      <!-- Reviews Section -->
+      <section id="reviewsSection" class="section">
+        <h2 class="section-title">Your Submitted Reviews</h2>
+        <div id="userReviewsList">
+          <div class="empty-state">You haven't submitted any reviews yet.</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Review Modal -->
+  <div id="reviewModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">Submit Your Review</h3>
+        <button class="modal-close" onclick="closeReviewModal()">&times;</button>
+      </div>
+      <form id="reviewForm" onsubmit="handleSubmitReview(event)">
+        <div class="form-group">
+          <label>Your Verdict</label>
+          <select id="reviewVerdict" required>
+            <option value="">Select verdict</option>
+            <option value="real">✓ Real News</option>
+            <option value="fake">✗ Fake News</option>
+            <option value="uncertain">? Uncertain/Misleading</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Explain your verdict...</label>
+          <textarea id="reviewReasoning" required placeholder="Explain your verdict..."></textarea>
+        </div>
+        <button type="submit" class="btn" id="submitReviewBtn">Submit Review</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'http://localhost:5000/api';
+    let currentUser = null;
+    let userAnalyses = [];
+    let authToken = null;
+    let currentAnalysisId = null;
+    let userReviews = [];
+
+    // restore auth state from localStorage on load
+window.onload = function() {
+  const savedToken = localStorage.getItem('fc_token');
+  const savedUser = localStorage.getItem('fc_user');
+  if (savedToken) {
+    authToken = savedToken;
+    try { currentUser = savedUser ? JSON.parse(savedUser) : null; } catch(e) { currentUser = null; }
+    // verify token and refresh data
+    checkAuth();
+  } else {
+    showAuthScreen();
+  }
+};
+
+
+    // Check authentication status
+    async function checkAuth() {
+  if (!authToken) {
+    showAuthScreen();
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE}/auth/verify`, {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      // server returns user object in 'user'
+      currentUser = data.user || currentUser;
+      // persist
+      localStorage.setItem('fc_token', authToken);
+      localStorage.setItem('fc_user', JSON.stringify(currentUser));
+      showApp();
+      await loadUserAnalysesFromServer();
+      await loadUserReviewsFromServer();
+      await loadDashboard();
+    } else {
+      // token invalid
+      handleLogout();
+    }
+  } catch (error) {
+    console.error('Auth verification failed:', error);
+    // keep user signed-out if verification fails
+    handleLogout();
+  }
+}
+
+    // Show auth screen
+    function showAuthScreen() {
+      document.getElementById('authContainer').style.display = 'flex';
+      document.getElementById('appContainer').style.display = 'none';
+    }
+
+    // Show app
+    function showApp() {
+      document.getElementById('authContainer').style.display = 'none';
+      document.getElementById('appContainer').style.display = 'block';
+      document.getElementById('userEmail').textContent = currentUser.email;
+    }
+
+    // Toggle between login and register
+    function showRegister(event) {
+      event.preventDefault();
+      document.getElementById('loginForm').style.display = 'none';
+      document.getElementById('registerForm').style.display = 'block';
+      document.getElementById('registerError').style.display = 'none';
+    }
+
+    function showLogin(event) {
+      event.preventDefault();
+      document.getElementById('registerForm').style.display = 'none';
+      document.getElementById('loginForm').style.display = 'block';
+      document.getElementById('loginError').style.display = 'none';
+    }
+
+    // Handle registration
+    async function handleRegister(event) {
+      event.preventDefault();
+      const email = document.getElementById('registerEmail').value;
+      const password = document.getElementById('registerPassword').value;
+      const errorDiv = document.getElementById('registerError');
+      const btn = document.getElementById('registerBtn');
+
+      btn.disabled = true;
+      btn.textContent = 'Registering...';
+      errorDiv.style.display = 'none';
+
+      try {
+        const response = await fetch(`${API_BASE}/auth/register`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ email, password })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          // Show login form after successful registration
+          document.getElementById('registerFormElement').reset();
+          const loginEvent = { preventDefault: () => {} };
+          showLogin(loginEvent);
+          alert('Registration successful! Please login.');
+        } else {
+          errorDiv.textContent = data.message || 'Registration failed. Please try again.';
+          errorDiv.style.display = 'block';
+        }
+      } catch (error) {
+        errorDiv.textContent = 'Connection error. Please check if the server is running.';
+        errorDiv.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Register';
+      }
+    }
+
+    // Handle login
+    async function handleLogin(event) {
+  event.preventDefault();
+  const email = document.getElementById('loginEmail').value;
+  const password = document.getElementById('loginPassword').value;
+  const errorDiv = document.getElementById('loginError');
+  const btn = document.getElementById('loginBtn');
+
+  btn.disabled = true;
+  btn.textContent = 'Logging in...';
+  errorDiv.style.display = 'none';
+
+  try {
+    const response = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      authToken = data.token;
+      currentUser = { email: data.email, userId: data.userId, isAdmin: data.isAdmin };
+      // persist
+      localStorage.setItem('fc_token', authToken);
+      localStorage.setItem('fc_user', JSON.stringify(currentUser));
+      document.getElementById('loginFormElement').reset();
+      showApp();
+      // load analyses and reviews
+      await loadUserAnalysesFromServer();
+      await loadUserReviewsFromServer();
+      await loadDashboard();
+    } else {
+      errorDiv.textContent = data.error || data.message || 'Login failed. Please check your credentials.';
+      errorDiv.style.display = 'block';
+    }
+  } catch (error) {
+    errorDiv.textContent = 'Connection error. Please check if the server is running.';
+    errorDiv.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Login';
+  }
+}
+
+    // Handle logout
+    function handleLogout() {
+  authToken = null;
+  currentUser = null;
+  userAnalyses = [];
+  userReviews = [];
+  localStorage.removeItem('fc_token');
+  localStorage.removeItem('fc_user');
+  showAuthScreen();
+  document.getElementById('loginFormElement').reset();
+  document.getElementById('loginError').style.display = 'none';
+}
+  async function loadUserReviewsFromServer() {
+  if (!authToken) return;
+  try {
+    const res = await fetch(`${API_BASE}/user/reviews`, {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      userReviews = data.reviews || [];
+      // refresh reviews view if currently open
+      const reviewsSection = document.getElementById('reviewsSection');
+      if (reviewsSection.classList.contains('active')) loadUserReviews();
+    } else if (res.status === 401) {
+      handleLogout();
+    }
+  } catch (e) {
+    console.error('Failed to load user reviews:', e);
+  }
+}
+
+
+    async function loadUserAnalysesFromServer() {
+  if (!authToken) return;
+  try {
+    const response = await fetch(`${API_BASE}/user/analyses`, {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    if (response.ok) {
+      const data = await response.json();
+      userAnalyses = data.analyses || [];
+      renderRecentAnalyses(); // refresh dashboard table
+    } else if (response.status === 401) {
+      handleLogout();
+    }
+  } catch (e) {
+    console.error('Failed to load user analyses:', e);
+  }
+}
+
+    // Load dashboard data
+    async function loadDashboard() {
+      if (!authToken) return;
+      if (userAnalyses.length === 0) {
+  await loadUserAnalysesFromServer();
+}
+      try {
+        const response = await fetch(`${API_BASE}/user/analytics`, {
+          headers: {
+            'Authorization': `Bearer ${authToken}`
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          document.getElementById('totalAnalyses').textContent = data.totalAnalyses || userAnalyses.length;
+          document.getElementById('yourReviews').textContent = data.yourReviews || userAnalyses.length;
+          document.getElementById('accuracyScore').textContent = (data.accuracyScore || 0) + '%';
+          
+          renderRecentAnalyses();
+        } else if (response.status === 401) {
+          handleLogout();
+        } else {
+          // Use local data if API fails
+          document.getElementById('totalAnalyses').textContent = userAnalyses.length;
+          document.getElementById('yourReviews').textContent = userAnalyses.length;
+          document.getElementById('accuracyScore').textContent = '0%';
+          renderRecentAnalyses();
+        }
+      } catch (error) {
+        console.error('Failed to load analytics:', error);
+        // Use local data
+        document.getElementById('totalAnalyses').textContent = userAnalyses.length;
+        document.getElementById('yourReviews').textContent = userAnalyses.length;
+        document.getElementById('accuracyScore').textContent = '0%';
+        renderRecentAnalyses();
+      }
+    }
+
+    // Render recent analyses
+    function renderRecentAnalyses() {
+  const container = document.getElementById('recentAnalysesTable');
+  if (!userAnalyses || userAnalyses.length === 0) {
+    container.innerHTML = '<div class="empty-state">No analyses yet. Start by analyzing some news!</div>';
+    return;
+  }
+
+  const recent = userAnalyses.slice(0, 5); // already sorted by server desc
+  let html = '<table><thead><tr><th>Date</th><th>Headline</th><th>Verdict</th><th>Confidence</th><th>Action</th></tr></thead><tbody>';
+
+  recent.forEach(analysis => {
+    const dateStr = new Date(analysis.createdAt || analysis.date || Date.now()).toLocaleDateString();
+    const headline = analysis.headline || analysis.url || '-';
+    const verdict = (analysis.verdict || 'Uncertain');
+    const confidence = (typeof analysis.confidence !== 'undefined' && analysis.confidence !== null) ? analysis.confidence : '-';
+    const aid = analysis.analysisId || analysis.id || analysis.analysisId || '';
+
+    html += `
+      <tr>
+        <td>${dateStr}</td>
+        <td>${headline}</td>
+        <td><span class="verdict ${verdict.toLowerCase()}">${verdict}</span></td>
+        <td>${confidence}%</td>
+        <td><button class="btn" style="width:auto;padding:6px 12px;font-size:14px;" onclick="viewDetailsById('${aid}')">View</button></td>
+      </tr>
+    `;
+  });
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+
+    // Show section
+    function showSection(sectionName) {
+      const sections = document.querySelectorAll('.section');
+      sections.forEach(section => section.classList.remove('active'));
+      
+      const links = document.querySelectorAll('.nav-link');
+      links.forEach(link => link.classList.remove('active'));
+      
+      document.getElementById(sectionName + 'Section').classList.add('active');
+      if (event && event.target) {
+        event.target.classList.add('active');
+      } else {
+        // Find and activate the correct nav link
+        links.forEach(link => {
+          if (link.onclick && link.onclick.toString().includes(sectionName)) {
+            link.classList.add('active');
+          }
+        });
+      }
+
+      if (sectionName === 'dashboard') {
+        loadDashboard();
+      } else if (sectionName === 'history') {
+        renderHistory();
+      } else if (sectionName === 'analyze') {
+        document.getElementById('analysisResults').style.display = 'none';
+      } else if (sectionName === 'sources') {
+        loadSources();
+      } else if (sectionName === 'reviews') {
+        loadUserReviews();
+      }
+    }
+
+    // Show tab
+    function showTab(tabName) {
+      const tabs = document.querySelectorAll('.tab');
+      tabs.forEach(tab => tab.classList.remove('active'));
+      if (event && event.target) {
+        event.target.classList.add('active');
+      }
+
+      const contents = document.querySelectorAll('.tab-content');
+      contents.forEach(content => content.classList.remove('active'));
+      document.getElementById(tabName + 'Tab').classList.add('active');
+
+      document.getElementById('analysisResults').style.display = 'none';
+    }
+
+    // Handle analyze
+    async function handleAnalyze(event, type) {
+      event.preventDefault();
+      if (!authToken) {
+        handleLogout();
+        return;
+      }
+
+      let headline, content, url, category;
+      let btn;
+
+      if (type === 'text') {
+        headline = document.getElementById('textHeadline').value;
+        content = document.getElementById('textContent').value;
+        category = document.getElementById('textCategory').value;
+        btn = document.getElementById('textAnalyzeBtn');
+      } else {
+        url = document.getElementById('newsUrl').value;
+        category = document.getElementById('urlCategory').value;
+        btn = document.getElementById('urlAnalyzeBtn');
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Analyzing...';
+      document.getElementById('analysisResults').style.display = 'none';
+
+      try {
+        const body = type === 'text' 
+          ? { headline, content, category }
+          : { url, category };
+
+        const response = await fetch(`${API_BASE}/analyze`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
+          body: JSON.stringify(body)
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          displayResults(data, headline || url);
+          
+          // Save to local array
+          userAnalyses.unshift({
+  analysisId: data.analysisId || data.id || Date.now().toString(),
+  headline: headline || url || data.headline || data.url,
+  verdict: data.verdict || 'Uncertain',
+  confidence: data.confidence || 0,
+  lstmScore: data.lstmScore || 0,
+  cgpnnScore: data.cgpnnScore || 0,
+  mlScore: data.mlScore || data.combinedScore || 0,
+  sampleReviews: data.sampleReviews || [],
+  communityVote: data.communityVote || {},
+  createdAt: data.createdAt || new Date().toISOString()
+});
+
+
+          // Clear form
+          event.target.reset();
+        } else if (response.status === 401) {
+          handleLogout();
+        } else {
+          const data = await response.json();
+          alert(data.message || 'Analysis failed. Please try again.');
+        }
+      } catch (error) {
+        alert('Connection error. Please check if the server is running.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Analyze News';
+      }
+    }
+
+    // Display results
+    function displayResults(data, headline) {
+      const verdict = data.verdict || 'Uncertain';
+      const confidence = data.confidence || 0;
+      const lstmScore = data.lstmScore || 0;
+      const cgpnnScore = data.cgpnnScore || 0;
+      const combinedScore = data.combinedScore || data.mlScore || 0;
+
+      // Store analysis ID for reviews
+      currentAnalysisId = data.analysisId || data.id || Date.now().toString();
+
+      let verdictClass = 'uncertain';
+      if (verdict.toLowerCase().includes('real') || verdict.toLowerCase().includes('true')) {
+        verdictClass = 'real';
+      } else if (verdict.toLowerCase().includes('fake') || verdict.toLowerCase().includes('false')) {
+        verdictClass = 'fake';
+      }
+
+      document.getElementById('verdictDisplay').innerHTML = `
+        <h3>Verdict: <span class="verdict ${verdictClass}">${verdict}</span></h3>
+        <p style="color: #6b7280; margin-top: 10px;">Analyzing: ${headline}</p>
+      `;
+      
+      document.getElementById('confidenceScore').textContent = confidence + '%';
+      document.getElementById('lstmScore').textContent = lstmScore + '%';
+      document.getElementById('cgpnnScore').textContent = cgpnnScore + '%';
+      document.getElementById('combinedScore').textContent = combinedScore + '%';
+
+      document.getElementById('analysisResults').style.display = 'block';
+      
+      // Load community reviews
+      loadCommunityReviews(currentAnalysisId);
+    }
+
+    // Render history
+    function renderHistory() {
+      const container = document.getElementById('historyTable');
+      
+      if (userAnalyses.length === 0) {
+        container.innerHTML = '<div class="empty-state">No analysis history yet.</div>';
+        return;
+      }
+
+      let html = '<table><thead><tr><th>Date</th><th>Headline</th><th>Verdict</th><th>Confidence</th><th>Action</th></tr></thead><tbody>';
+      
+      userAnalyses.slice().reverse().forEach((analysis, index) => {
+        html += `
+          <tr>
+            <td>${new Date(analysis.date).toLocaleDateString()}</td>
+            <td>${analysis.headline}</td>
+            <td><span class="verdict ${analysis.verdict.toLowerCase()}">${analysis.verdict}</span></td>
+            <td>${analysis.confidence}%</td>
+            <td><button class="btn" style="width: auto; padding: 6px 12px; font-size: 14px;" onclick="viewDetails(${userAnalyses.length - 1 - index})">View</button></td>
+          </tr>
+        `;
+      });
+      
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    // View details
+    function viewDetails(index) {
+      const analysis = userAnalyses[index];
+      displayResults(analysis, analysis.headline);
+      showSection('analyze');
+      document.querySelectorAll('.nav-link')[1].classList.add('active');
+    }
+function viewDetailsById(analysisId) {
+  const a = userAnalyses.find(x => (x.analysisId === analysisId || x.id === analysisId || x._id === analysisId));
+  if (a) {
+    displayResults({
+      analysisId: a.analysisId || a.id || a._id,
+      verdict: a.verdict,
+      confidence: a.confidence,
+      lstmScore: a.lstmScore || 0,
+      cgpnnScore: a.cgpnnScore || 0,
+      mlScore: a.mlScore || a.combinedScore || 0,
+      createdAt: a.createdAt
+    }, a.headline || a.url);
+    currentAnalysisId = a.analysisId || a.id || a._id;
+    // display sample reviews if present
+    if (a.sampleReviews && a.sampleReviews.length) {
+      displayCommunityReviews(a.sampleReviews);
+    } else {
+      loadCommunityReviews(currentAnalysisId);
+    }
+    showSection('analyze');
+  } else {
+    // fallback: try loading reviews remotely
+    currentAnalysisId = analysisId;
+    displayResults({ verdict: 'Uncertain', confidence: 50 }, 'Article');
+    loadCommunityReviews(currentAnalysisId);
+    showSection('analyze');
+  }
+}
+
+    // Open review modal
+    function openReviewModal() {
+      if (!currentAnalysisId) {
+        alert('No analysis selected. Please analyze news first.');
+        return;
+      }
+      document.getElementById('reviewModal').classList.add('active');
+    }
+
+    // Close review modal
+    function closeReviewModal() {
+      document.getElementById('reviewModal').classList.remove('active');
+      document.getElementById('reviewForm').reset();
+    }
+
+    // Handle submit review
+    async function handleSubmitReview(event) {
+      event.preventDefault();
+      if (!authToken) {
+        handleLogout();
+        return;
+      }
+
+      const verdict = document.getElementById('reviewVerdict').value;
+      const text = document.getElementById('reviewReasoning').value;
+      const btn = document.getElementById('submitReviewBtn');
+
+      btn.disabled = true;
+      btn.textContent = 'Submitting...';
+
+      try {
+        const response = await fetch(`${API_BASE}/reviews`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
+          body: JSON.stringify({
+            analysisId: currentAnalysisId,
+            verdict: verdict,
+            text: text
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          
+          // Add to local reviews
+          userReviews.push({
+            analysisId: currentAnalysisId,
+            verdict: verdict,
+            text: text,
+            date: new Date().toISOString(),
+            username: currentUser.email
+          });
+          
+          closeReviewModal();
+          alert('Review submitted successfully!');
+          
+          // Reload community reviews
+          loadCommunityReviews(currentAnalysisId);
+        } else if (response.status === 401) {
+          handleLogout();
+        } else {
+          const data = await response.json();
+          alert(data.message || 'Failed to submit review. Please try again.');
+        }
+      } catch (error) {
+        console.error('Failed to submit review:', error);
+        // Save locally even if API fails
+        userReviews.push({
+          analysisId: currentAnalysisId,
+          verdict: verdict,
+          text: text,
+          date: new Date().toISOString(),
+          username: currentUser.email
+        });
+        closeReviewModal();
+        alert('Review saved locally!');
+        loadCommunityReviews(currentAnalysisId);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Submit Review';
+      }
+    }
+
+    // Load community reviews
+    async function loadCommunityReviews(analysisId) {
+      const container = document.getElementById('communityReviewsList');
+      container.innerHTML = '<div class="loading">Loading reviews...</div>';
+
+      try {
+        const response = await fetch(`${API_BASE}/reviews/${analysisId}`, {
+          headers: {
+            'Authorization': `Bearer ${authToken}`
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const reviews = data.reviews || data || [];
+          displayCommunityReviews(reviews);
+        } else {
+          // Show local reviews if API fails
+          const localReviews = userReviews.filter(r => r.analysisId === analysisId);
+          displayCommunityReviews(localReviews);
+        }
+      } catch (error) {
+        console.error('Failed to load reviews:', error);
+        // Show local reviews
+        const localReviews = userReviews.filter(r => r.analysisId === analysisId);
+        displayCommunityReviews(localReviews);
+      }
+    }
+
+    // Display community reviews
+    function displayCommunityReviews(reviews) {
+  const container = document.getElementById('communityReviewsList');
+  if (!reviews || reviews.length === 0) {
+    container.innerHTML = '<div class="empty-state">No reviews yet. Be the first to review!</div>';
+    return;
+  }
+  let html = '';
+  reviews.forEach(review => {
+    const username = review.username || review.user || 'Anonymous';
+    const v = (review.verdict || 'uncertain').toLowerCase();
+    const verdictText = v === 'real' ? '✓ Real' : v === 'fake' ? '✗ Fake' : '? Uncertain';
+    html += `
+      <div class="review-item">
+        <div class="review-header">
+          <span class="review-user">${username}</span>
+          <span class="review-verdict ${v}">${verdictText}</span>
+        </div>
+        <div class="review-text">${review.text || ''}</div>
+        <div style="color:#6b7280;font-size:12px;margin-top:8px;">${new Date(review.timestamp || review.date || Date.now()).toLocaleString()}</div>
+      </div>
+    `;
+  });
+  container.innerHTML = html;
+}
+
+    // Load sources
+    async function loadSources() {
+      const container = document.getElementById('sourcesList');
+      container.innerHTML = '<div class="loading">Loading sources...</div>';
+
+      try {
+        const response = await fetch(`${API_BASE}/sources`, {
+          headers: {
+            'Authorization': `Bearer ${authToken}`
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const sources = data.sources || data || [];
+          displaySources(sources);
+        } else {
+          // Show default sources if API fails
+          displaySources(getDefaultSources());
+        }
+      } catch (error) {
+        console.error('Failed to load sources:', error);
+        displaySources(getDefaultSources());
+      }
+    }
+
+    // Get default sources
+    function getDefaultSources() {
+      return [
+        { name: 'BBC News', url: 'https://www.bbc.com/news', rating: 4.5 },
+        { name: 'Reuters', url: 'https://www.reuters.com', rating: 4.8 },
+        { name: 'The Guardian', url: 'https://www.theguardian.com', rating: 4.3 },
+        { name: 'Associated Press', url: 'https://apnews.com', rating: 4.7 },
+        { name: 'NPR', url: 'https://www.npr.org', rating: 4.4 }
+      ];
+    }
+
+    // Display sources
+    function displaySources(sources) {
+      const container = document.getElementById('sourcesList');
+      
+      if (sources.length === 0) {
+        container.innerHTML = '<div class="empty-state">No sources available.</div>';
+        return;
+      }
+
+      let html = '';
+      sources.forEach(source => {
+        html += `
+          <div class="source-item">
+            <div class="source-info">
+              <h4>${source.name}</h4>
+              <a href="${source.url}" target="_blank" class="source-url">${source.url}</a>
+            </div>
+            <button class="rate-btn" onclick="rateSource('${source.name}')">Rate</button>
+          </div>
+        `;
+      });
+      
+      container.innerHTML = html;
+    }
+
+    // Rate source
+    function rateSource(sourceName) {
+      alert(`Rating feature for ${sourceName} coming soon!`);
+    }
+
+    // Load user reviews
+    function loadUserReviews() {
+      const container = document.getElementById('userReviewsList');
+      
+      if (userReviews.length === 0) {
+        container.innerHTML = '<div class="empty-state">You haven\'t submitted any reviews yet.</div>';
+        return;
+      }
+
+      let html = '';
+      userReviews.slice().reverse().forEach(review => {
+        const verdictClass = review.verdict.toLowerCase();
+        const verdictText = review.verdict === 'real' ? '✓ Real' : 
+                           review.verdict === 'fake' ? '✗ Fake' : 
+                           '? Uncertain';
+        
+        html += `
+          <div class="review-item" style="margin-bottom: 16px;">
+            <div class="review-header">
+              <span class="review-user">Analysis ID: ${review.analysisId}</span>
+              <span class="review-verdict ${verdictClass}">${verdictText}</span>
+            </div>
+            <div class="review-text">${review.text}</div>
+            <div style="color: #6b7280; font-size: 12px; margin-top: 8px;">
+              ${new Date(review.date).toLocaleString()}
+            </div>
+          </div>
+        `;
+      });
+      
+      container.innerHTML = html;
+    }
+
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+      const modal = document.getElementById('reviewModal');
+      if (event.target === modal) {
+        closeReviewModal();
+      }
+    }
+  </script>
+</body>
+</html>
