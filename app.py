@@ -24,6 +24,9 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Configuration
 app.config['JWT_SECRET_KEY'] = os.getenv(
     'JWT_SECRET_KEY',
@@ -33,24 +36,55 @@ app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=30)
 
 jwt = JWTManager(app)
 
-# --- MongoDB Connection (fixed) ---
-MONGO_URI = os.getenv('MONGO_URI', 'mongodb://localhost:27017/fakenews_detector')
-client = MongoClient(MONGO_URI)
+# --- MongoDB Connection (production-ready) ---
+MONGO_URI = os.getenv("MONGO_URI")
+if not MONGO_URI:
+    logger.error("MONGO_URI environment variable not set. Exiting.")
+    # In production you may want to raise; here we exit to avoid running without DB.
+    raise Exception("MONGO_URI environment variable not set")
 
-# get_default_database() raises if you try to use it in a boolean test.
-# Call it once and compare against None. If the URI includes a database name,
-# get_default_database() returns that Database; otherwise fall back to a named DB.
+
+# Recommended connection options for Atlas
+mongo_options = {
+    "serverSelectionTimeoutMS": 10000,  # 10s - fail fast if cluster unreachable
+    "connectTimeoutMS": 10000,
+    "socketTimeoutMS": None,
+    # If TLS required (Atlas does), PyMongo will negotiate automatically for mongodb+srv URIs.
+    # You can disable retryWrites only if you know it's needed: "retryWrites": True
+}
+
+try:
+    client = MongoClient(MONGO_URI, **mongo_options)
+    # trigger server selection to verify connection at startup (raises on failure)
+    client.admin.command("ping")
+    logger.info("Connected to MongoDB successfully.")
+except Exception as e:
+    logger.exception("Failed to connect to MongoDB with provided MONGO_URI.")
+    # fail fast so Render/Heroku/CI marks the deployment as bad
+    raise
+
+# If the URI includes a default database name, client.get_default_database() will return it
 try:
     default_db = client.get_default_database()
 except Exception:
     default_db = None
 
+# Use the default DB from URI, otherwise fall back to an app-named DB
 db = default_db if default_db is not None else client['fakenews_detector']
 
+# Collections
 users_collection = db['users']
 analyses_collection = db['analyses']
 reviews_collection = db['reviews']
 sources_collection = db['sources']
+
+# Optional: create common indexes (idempotent)
+try:
+    users_collection.create_index("email", unique=True)
+    # create other indexes as needed
+except Exception:
+    # don't crash on index creation errors, but log them
+    logger.exception("Failed to create one or more DB indexes.")
 # --- end DB init ---
 
 
