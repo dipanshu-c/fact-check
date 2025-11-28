@@ -6,8 +6,13 @@ import pickle
 from datetime import datetime, timedelta
 from pathlib import Path
 
+# add near other imports at top
+import requests
+import time
+from threading import Lock
+
 import numpy as np
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -20,6 +25,7 @@ from scipy.sparse import hstack
 from sklearn.base import BaseEstimator, TransformerMixin
 
 load_dotenv()
+
 # Logging (add this near the top of app.py, right after imports)
 import logging
 
@@ -97,15 +103,14 @@ except Exception:
 def init_sources():
     if sources_collection.count_documents({}) == 0:
         default_sources = [
-            {'name': 'BBC News', 'url': 'bbc.com', 'category': 'news', 'verified': True, 'createdAt': datetime.now()},
-            {'name': 'Reuters', 'url': 'reuters.com', 'category': 'news', 'verified': True, 'createdAt': datetime.now()},
-            {'name': 'Associated Press', 'url': 'apnews.com', 'category': 'news', 'verified': True, 'createdAt': datetime.now()},
-            {'name': 'Nature', 'url': 'nature.com', 'category': 'science', 'verified': True, 'createdAt': datetime.now()},
-            {'name': 'Science Daily', 'url': 'sciencedaily.com', 'category': 'science', 'verified': True, 'createdAt': datetime.now()},
-            {'name': 'The Guardian', 'url': 'theguardian.com', 'category': 'news', 'verified': True, 'createdAt': datetime.now()},
+            {'name': 'BBC News', 'url': 'bbc.com', 'category': 'news', 'verified': True, 'createdAt': datetime.utcnow()},
+            {'name': 'Reuters', 'url': 'reuters.com', 'category': 'news', 'verified': True, 'createdAt': datetime.utcnow()},
+            {'name': 'Associated Press', 'url': 'apnews.com', 'category': 'news', 'verified': True, 'createdAt': datetime.utcnow()},
+            {'name': 'Nature', 'url': 'nature.com', 'category': 'science', 'verified': True, 'createdAt': datetime.utcnow()},
+            {'name': 'Science Daily', 'url': 'sciencedaily.com', 'category': 'science', 'verified': True, 'createdAt': datetime.utcnow()},
+            {'name': 'The Guardian', 'url': 'theguardian.com', 'category': 'news', 'verified': True, 'createdAt': datetime.utcnow()},
         ]
         sources_collection.insert_many(default_sources)
-
 init_sources()
 
 # ------------------ EngineeredFeatures (needed for unpickling) ------------------
@@ -473,11 +478,111 @@ def predict_with_community_feedback(headline, content, analysis_id=None):
 
     return enhanced_prediction, community_consensus
 # ---------------------------------------------------------------------------------
-
 @app.route('/', methods=['GET'])
+# Add near other imports at top if not already present
+import requests
+import time
+from threading import Lock
 def home_page():
-    # this will render templates/index.html
     return render_template('index.html')
+# Simple in-memory cache (key -> (expire_ts, payload))
+_news_cache = {}
+_news_cache_lock = Lock()
+_NEWS_CACHE_TTL = int(os.getenv("NEWS_CACHE_TTL", 30))  # seconds
+
+NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
+
+@app.route('/api/news', methods=['GET'])
+def get_news():
+    """
+    Proxy to NewsAPI.org with basic caching & robust error handling.
+    Query params:
+      - q (search query) optional -> uses /v2/everything
+      - category (top-headlines) optional
+      - country (top-headlines) optional, default 'us'
+      - pageSize optional (capped at 50)
+    """
+    if not NEWSAPI_KEY:
+        logger.error("Attempt to call /api/news without NEWSAPI_KEY set.")
+        return jsonify({'error': 'Server missing NEWSAPI_KEY (configure environment variable)'}), 500
+
+    q = (request.args.get('q') or '').strip()
+    category = (request.args.get('category') or '').strip()
+    country = (request.args.get('country') or 'us').strip()
+    source = (request.args.get('source') or '').strip()
+    try:
+        page_size = int(request.args.get('pageSize', 6))
+    except Exception:
+        page_size = 6
+    page_size = max(1, min(page_size, 50))
+
+    # Build cache key
+    cache_key = f"q:{q}|cat:{category}|cty:{country}|src:{source}|ps:{page_size}"
+
+    # Try cache
+    now = time.time()
+    with _news_cache_lock:
+        cached = _news_cache.get(cache_key)
+        if cached and cached[0] > now:
+            logger.debug("Serving news from cache for key=%s", cache_key)
+            return jsonify(cached[1]), 200
+
+    # Choose endpoint
+    if q:
+        url = 'https://newsapi.org/v2/everything'
+        params = {'apiKey': NEWSAPI_KEY, 'q': q, 'pageSize': page_size, 'sortBy': 'publishedAt'}
+    else:
+        url = 'https://newsapi.org/v2/top-headlines'
+        params = {'apiKey': NEWSAPI_KEY, 'pageSize': page_size}
+        if country:
+            params['country'] = country
+        if category:
+            params['category'] = category
+        if source:
+            params['sources'] = source
+
+    try:
+        resp = requests.get(url, params=params, timeout=10)
+    except requests.RequestException as e:
+        logger.exception("Requests call to NewsAPI failed")
+        return jsonify({'error': 'Upstream request failed', 'detail': str(e)}), 502
+
+    # If upstream returns non-200, forward a safe message and log details
+    if resp.status_code != 200:
+        logger.warning("NewsAPI returned status=%s body=%s", resp.status_code, resp.text[:400])
+        # Try to decode JSON for useful message
+        try:
+            j = resp.json()
+            msg = j.get('message') or j.get('status') or resp.text
+        except Exception:
+            msg = resp.text
+        return jsonify({'error': 'Upstream provider error', 'status': resp.status_code, 'message': msg}), resp.status_code
+
+    # Parse and normalize response for client
+    try:
+        data = resp.json()
+    except ValueError:
+        logger.error("Invalid JSON from NewsAPI")
+        return jsonify({'error': 'Invalid JSON from upstream provider'}), 502
+
+    articles = []
+    for a in data.get('articles', [])[:page_size]:
+        articles.append({
+            'title': a.get('title'),
+            'description': a.get('description'),
+            'url': a.get('url'),
+            'source': a.get('source', {}).get('name'),
+            'publishedAt': a.get('publishedAt'),
+            'urlToImage': a.get('urlToImage')
+        })
+
+    payload = {'status': 'ok', 'totalResults': data.get('totalResults', 0), 'articles': articles}
+
+    # store in cache
+    with _news_cache_lock:
+        _news_cache[cache_key] = (time.time() + _NEWS_CACHE_TTL, payload)
+
+    return jsonify(payload), 200
 
 # ==================== Authentication Routes ====================
 @app.route('/api/auth/register', methods=['POST'])
@@ -493,13 +598,13 @@ def register():
         return jsonify({'error': 'User already exists'}), 400
 
     user = {
-        'email': email,
-        'password': generate_password_hash(password),
-        'isAdmin': False,
-        'createdAt': datetime.now(),
-        'reviewCount': 0,
-        'analysisCount': 0
-    }
+    'email': email,
+    'password': generate_password_hash(password),
+    'isAdmin': False,
+    'createdAt': datetime.utcnow(),
+    'reviewCount': 0,
+    'analysisCount': 0
+}
 
     result = users_collection.insert_one(user)
     return jsonify({'success': True, 'message': 'Registration successful', 'userId': str(result.inserted_id)}), 201
@@ -536,9 +641,20 @@ def verify_token():
     if not user:
         return jsonify({'error': 'User not found'}), 404
 
+    created_at_iso = None
+    try:
+        if 'createdAt' in user and user['createdAt'] is not None:
+            created_at_iso = user['createdAt'].isoformat()
+    except Exception:
+        created_at_iso = None
+
     return jsonify({
         'valid': True,
-        'user': {'email': user['email'], 'userId': str(user['_id']), 'joinDate': user['createdAt'].strftime('%m/%d/%Y')},
+        'user': {
+            'email': user['email'],
+            'userId': str(user['_id']),
+            'joinDate': created_at_iso
+        },
         'isAdmin': user.get('isAdmin', False)
     }), 200
 
