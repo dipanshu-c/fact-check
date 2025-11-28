@@ -740,10 +740,61 @@
             <div class="stat-value" id="accuracyScore">0%</div>
           </div>
         </div>
+        <!-- add inside Dashboard section, e.g. immediately after stats-grid -->
+        <div id="recentAnalysesWrapper" style="margin-top:20px;">
+          <h3 style="margin-bottom:12px;">Recent Analyses</h3>
+          <div id="recentAnalysesTable" class="table-container">
+            <div class="empty-state">No analyses yet. Start by analyzing some news!</div>
+          </div>
+        </div>
 
-        <h3 style="margin-bottom: 20px;">Recent Analyses</h3>
-        <div class="table-container" id="recentAnalysesTable">
-          <div class="empty-state">No analyses yet. Start by analyzing some news!</div>
+        <!-- Live News Controls (insert just above Live Headlines container) -->
+        <div id="liveNewsControls" style="margin: 12px 0 16px; display:flex; gap:10px;  flex-wrap:wrap; align-items:center;">
+          <input id="newsSearchInput" type="search" placeholder="Search headlines or keywords..." style="cursor: pointer;padding:14px;border:1px solid #ddd;border-radius:6px;min-width:45%;" />
+
+          <select id="newsCategorySelect" style="padding:12px; cursor: pointer;border:1px solid #ddd;border-radius:6px;">
+            <option value="">All categories</option>
+            <option value="business">Business</option>
+            <option value="entertainment">Entertainment</option>
+            <option value="general">General</option>
+            <option value="health">Health</option>
+            <option value="science">Science</option>
+            <option value="sports">Sports</option>
+            <option value="technology">Technology</option>
+          </select>
+
+          <select id="newsCountrySelect" style="padding:12px; cursor: pointer; border:1px solid #ddd;border-radius:6px;">
+            <option value="us">United States</option>
+            <option value="in">India</option>
+            <option value="gb">United Kingdom</option>
+            <option value="ca">Canada</option>
+            <option value="au">Australia</option>
+          </select>
+
+          <select id="newsPageSizeSelect" style="padding:12px; cursor: pointer; border:1px solid #ddd;border-radius:6px;">
+            <option value="4">2</option>
+            <option value="6" selected>4</option>
+            <option value="8">6</option>
+            <option value="10">8</option>
+          </select>
+
+          <button id="newsRefreshBtn"  style="padding:12px; border:1px solid #ddd; border-radius:6px; background-color: #2c3e50; min-width: 23.5%; cursor: pointer;">Refresh</button>
+
+          <label style="margin-left:auto;color:#6b7280;font-size:13px;">
+            Auto-refresh:
+            <select id="newsAutoRefresh" style="padding:6px;border:1px solid #ddd;border-radius:6px;margin-left:6px;">
+              <option value="0">Off</option>
+              <option value="30">30s</option>
+              <option value="60" selected>60s</option>
+              <option value="120">120s</option>
+            </select>
+          </label>
+        </div>
+
+        <!-- Live Headlines Container (existing) -->
+        <h3 style="margin: 24px 0 12px;">Live Headlines</h3>
+        <div id="liveNewsContainer" class="stats-grid" style="grid-template-columns: repeat(auto-fit,minmax(220px,1fr));">
+          <!-- cards inserted by JS -->
         </div>
       </section>
 
@@ -963,12 +1014,21 @@ window.onload = function() {
       document.getElementById('appContainer').style.display = 'none';
     }
 
-    // Show app
     function showApp() {
-      document.getElementById('authContainer').style.display = 'none';
-      document.getElementById('appContainer').style.display = 'block';
-      document.getElementById('userEmail').textContent = currentUser.email;
-    }
+  document.getElementById('authContainer').style.display = 'none';
+  document.getElementById('appContainer').style.display = 'block';
+  document.getElementById('userEmail').textContent = currentUser.email;
+
+  // initialize news controls (wires refresh, search, auto-refresh etc.)
+  try {
+    initNewsControls();
+  } catch (e) {
+    console.warn('initNewsControls failed:', e);
+  }
+
+  // initial news load (use default opts or previously selected)
+  loadLiveNews({ country: 'us', pageSize: 6 });
+}
 
     // Toggle between login and register
     function showRegister(event) {
@@ -1161,11 +1221,16 @@ window.onload = function() {
         document.getElementById('accuracyScore').textContent = '0%';
         renderRecentAnalyses();
       }
+      loadLiveNews({ country: 'us', pageSize: 6 });
     }
 
-    // Render recent analyses
     function renderRecentAnalyses() {
   const container = document.getElementById('recentAnalysesTable');
+  if (!container) {
+    console.warn('renderRecentAnalyses: #recentAnalysesTable not found in DOM. Skipping render.');
+    return;
+  }
+
   if (!userAnalyses || userAnalyses.length === 0) {
     container.innerHTML = '<div class="empty-state">No analyses yet. Start by analyzing some news!</div>';
     return;
@@ -1179,14 +1244,14 @@ window.onload = function() {
     const headline = analysis.headline || analysis.url || '-';
     const verdict = (analysis.verdict || 'Uncertain');
     const confidence = (typeof analysis.confidence !== 'undefined' && analysis.confidence !== null) ? analysis.confidence : '-';
-    const aid = analysis.analysisId || analysis.id || analysis.analysisId || '';
+    const aid = analysis.analysisId || analysis.id || analysis._id || '';
 
     html += `
       <tr>
         <td>${dateStr}</td>
-        <td>${headline}</td>
-        <td><span class="verdict ${verdict.toLowerCase()}">${verdict}</span></td>
-        <td>${confidence}%</td>
+        <td>${escapeHtml(headline)}</td>
+        <td><span class="verdict ${String(verdict).toLowerCase()}">${escapeHtml(verdict)}</span></td>
+        <td>${escapeHtml(String(confidence))}%</td>
         <td><button class="btn" style="width:auto;padding:6px 12px;font-size:14px;" onclick="viewDetailsById('${aid}')">View</button></td>
       </tr>
     `;
@@ -1195,6 +1260,7 @@ window.onload = function() {
   html += '</tbody></table>';
   container.innerHTML = html;
 }
+
 
 
     // Show section
@@ -1657,6 +1723,202 @@ function viewDetailsById(analysisId) {
       
       container.innerHTML = html;
     }
+// Call this from loadDashboard() or window.onload when app visible
+async function loadLiveNews(opts = {}) {
+  // opts: { q, category, country, pageSize }
+  const container = document.getElementById('liveNewsContainer');
+  if (!container) return;
+
+  container.innerHTML = '<div class="loading">Loading live headlines...</div>';
+
+  const params = new URLSearchParams();
+  if (opts.q) params.append('q', opts.q);
+  if (opts.category) params.append('category', opts.category);
+  if (opts.country) params.append('country', opts.country);
+  params.append('pageSize', opts.pageSize || 6);
+
+  try {
+    const resp = await fetch(`${API_BASE.replace('/api','')}/api/news?${params.toString()}`, {
+      method: 'GET'
+      // no auth required for proxied news endpoint (server holds the key)
+    });
+
+    if (!resp.ok) {
+      container.innerHTML = '<div class="empty-state">Failed to load live headlines.</div>';
+      return;
+    }
+
+    const data = await resp.json();
+    const articles = data.articles || [];
+    renderLiveNews(articles);
+  } catch (err) {
+    console.error('Live news load failed', err);
+    container.innerHTML = '<div class="empty-state">Unable to load live headlines.</div>';
+  }
+}
+
+function renderLiveNews(articles) {
+  const container = document.getElementById('liveNewsContainer');
+  if (!container) return;
+
+  if (!articles || articles.length === 0) {
+    container.innerHTML = '<div class="empty-state">No live headlines available at the moment.</div>';
+    return;
+  }
+
+  let html = '';
+  articles.forEach(a => {
+    const title = a.title || 'Untitled';
+    const desc = a.description || '';
+    const src = a.source || 'Unknown';
+    const published = a.publishedAt ? new Date(a.publishedAt).toLocaleString() : '';
+    const image = a.urlToImage ? `<img src="${a.urlToImage}" alt="" style="width:100%;height:140px;object-fit:cover;border-radius:6px;margin-bottom:8px;">` : '';
+
+    html += `
+      <div class="stat-card" style="padding:16px;display:flex;flex-direction:column;gap:8px;">
+        ${image}
+        <div style="font-weight:700;font-size:16px;line-height:1.2;margin-bottom:6px;">
+          <a href="${a.url}" target="_blank" style="text-decoration:none;color:inherit;">${escapeHtml(title)}</a>
+        </div>
+        <div style="color:#6b7280;font-size:13px;flex:1;">${escapeHtml(truncate(desc, 120))}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12px;color:#6b7280;">
+          <span>${escapeHtml(src)}</span>
+          <span>${escapeHtml(published)}</span>
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
+}
+// --- News controls wiring & enhanced loadLiveNews integration ---
+
+// keep a reference to the current auto-refresh timer
+let _liveNewsAutoRefreshTimer = null;
+// keep last used options
+let _liveNewsLastOpts = { q: '', category: '', country: 'us', pageSize: 6 };
+
+// debounce helper
+function debounce(fn, wait) {
+  let t;
+  return function (...args) {
+    clearTimeout(t);
+    t = setTimeout(() => fn.apply(this, args), wait);
+  };
+}
+
+// updated loadLiveNews to use API_BASE and _liveNewsLastOpts if needed
+async function loadLiveNews(opts = {}) {
+  const container = document.getElementById('liveNewsContainer');
+  if (!container) return;
+
+  // merge options with last opts
+  _liveNewsLastOpts = Object.assign({}, _liveNewsLastOpts, opts);
+
+  container.innerHTML = '<div class="loading">Loading live headlines...</div>';
+
+  const params = new URLSearchParams();
+  if (_liveNewsLastOpts.q) params.append('q', _liveNewsLastOpts.q);
+  if (_liveNewsLastOpts.category) params.append('category', _liveNewsLastOpts.category);
+  if (_liveNewsLastOpts.country) params.append('country', _liveNewsLastOpts.country);
+  params.append('pageSize', _liveNewsLastOpts.pageSize || 6);
+
+  try {
+    // API_BASE is defined earlier in your script as 'http://127.0.0.1:5000/api'
+    const base = API_BASE.replace('/api',''); // evaluate to http://127.0.0.1:5000
+    const resp = await fetch(`${base}/api/news?${params.toString()}`, { method: 'GET' });
+
+    if (!resp.ok) {
+      console.warn('News fetch failed', resp.status);
+      container.innerHTML = '<div class="empty-state">Failed to load live headlines.</div>';
+      return;
+    }
+
+    const data = await resp.json();
+    const articles = data.articles || [];
+    renderLiveNews(articles);
+  } catch (err) {
+    console.error('Live news load failed', err);
+    container.innerHTML = '<div class="empty-state">Unable to load live headlines.</div>';
+  }
+}
+
+// Attach event listeners to the controls (call once after page/app ready)
+function initNewsControls() {
+  const searchInput = document.getElementById('newsSearchInput');
+  const categorySelect = document.getElementById('newsCategorySelect');
+  const countrySelect = document.getElementById('newsCountrySelect');
+  const pageSizeSelect = document.getElementById('newsPageSizeSelect');
+  const refreshBtn = document.getElementById('newsRefreshBtn');
+  const autoRefreshSelect = document.getElementById('newsAutoRefresh');
+
+  if (!searchInput) return;
+
+  // set control values based on last opts
+  searchInput.value = _liveNewsLastOpts.q || '';
+  categorySelect.value = _liveNewsLastOpts.category || '';
+  countrySelect.value = _liveNewsLastOpts.country || 'us';
+  pageSizeSelect.value = String(_liveNewsLastOpts.pageSize || 6);
+
+  // debounced search
+  const debouncedSearch = debounce(() => {
+    const q = searchInput.value.trim();
+    _liveNewsLastOpts.q = q;
+    loadLiveNews({ q });
+  }, 450);
+
+  searchInput.addEventListener('input', debouncedSearch);
+
+  categorySelect.addEventListener('change', () => {
+    const category = categorySelect.value;
+    loadLiveNews({ category });
+  });
+
+  countrySelect.addEventListener('change', () => {
+    const country = countrySelect.value;
+    loadLiveNews({ country });
+  });
+
+  pageSizeSelect.addEventListener('change', () => {
+    const pageSize = parseInt(pageSizeSelect.value, 10) || 6;
+    loadLiveNews({ pageSize });
+  });
+
+  refreshBtn.addEventListener('click', () => {
+    loadLiveNews({}); // re-use last opts
+  });
+
+  // auto-refresh control
+  function resetAutoRefresh() {
+    if (_liveNewsAutoRefreshTimer) {
+      clearInterval(_liveNewsAutoRefreshTimer);
+      _liveNewsAutoRefreshTimer = null;
+    }
+    const t = parseInt(autoRefreshSelect.value, 10) || 0;
+    if (t > 0) {
+      _liveNewsAutoRefreshTimer = setInterval(() => loadLiveNews({}), t * 1000);
+    }
+  }
+
+  autoRefreshSelect.addEventListener('change', resetAutoRefresh);
+  // init auto-refresh (reads default select value)
+  resetAutoRefresh();
+}
+
+// call initNewsControls when the app UI is shown
+// You already have showApp() — add the call inside it (see example below)
+
+// small helpers
+function truncate(s, n) {
+  if (!s) return '';
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/[&<>"']/g, function(m) {
+    return ({ '&': '&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[m];
+  });
+}
 
     // Close modal when clicking outside
     window.onclick = function(event) {
