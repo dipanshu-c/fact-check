@@ -24,9 +24,6 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 # Configuration
 app.config['JWT_SECRET_KEY'] = os.getenv(
     'JWT_SECRET_KEY',
