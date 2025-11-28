@@ -480,9 +480,6 @@ def predict_with_community_feedback(headline, content, analysis_id=None):
 # ---------------------------------------------------------------------------------
 @app.route('/', methods=['GET'])
 # Add near other imports at top if not already present
-import requests
-import time
-from threading import Lock
 def home_page():
     return render_template('index.html')
 # Simple in-memory cache (key -> (expire_ts, payload))
