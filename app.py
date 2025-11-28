@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -473,6 +473,11 @@ def predict_with_community_feedback(headline, content, analysis_id=None):
 
     return enhanced_prediction, community_consensus
 # ---------------------------------------------------------------------------------
+
+@app.route('/', methods=['GET'])
+def home_page():
+    # this will render templates/index.html
+    return render_template('index.html')
 
 # ==================== Authentication Routes ====================
 @app.route('/api/auth/register', methods=['POST'])
