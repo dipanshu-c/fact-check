@@ -884,7 +884,9 @@
                 <div class="score-value" id="combinedScore">-</div>
               </div>
             </div>
-            
+            <div style="background:#ddd;border-radius:10px;">
+              <div id="confidenceBar"></div>
+            </div>
             <!-- Add Review Button -->
             <button class="add-review-btn" onclick="openReviewModal()">📝 Add Your Review</button>
             
@@ -1007,7 +1009,6 @@ window.onload = function() {
     handleLogout();
   }
 }
-
     // Show auth screen
     function showAuthScreen() {
       document.getElementById('authContainer').style.display = 'flex';
@@ -1200,7 +1201,7 @@ window.onload = function() {
         if (response.ok) {
           const data = await response.json();
           document.getElementById('totalAnalyses').textContent = data.totalAnalyses || userAnalyses.length;
-          document.getElementById('yourReviews').textContent = data.yourReviews || userAnalyses.length;
+          document.getElementById('yourReviews').textContent = data.totalReviews || userReviews.length;
           document.getElementById('accuracyScore').textContent = (data.accuracyScore || 0) + '%';
           
           renderRecentAnalyses();
@@ -1209,7 +1210,7 @@ window.onload = function() {
         } else {
           // Use local data if API fails
           document.getElementById('totalAnalyses').textContent = userAnalyses.length;
-          document.getElementById('yourReviews').textContent = userAnalyses.length;
+          document.getElementById('yourReviews').textContent = userReviews.length;
           document.getElementById('accuracyScore').textContent = '0%';
           renderRecentAnalyses();
         }
@@ -1217,7 +1218,7 @@ window.onload = function() {
         console.error('Failed to load analytics:', error);
         // Use local data
         document.getElementById('totalAnalyses').textContent = userAnalyses.length;
-        document.getElementById('yourReviews').textContent = userAnalyses.length;
+        document.getElementById('yourReviews').textContent = userReviews.length;
         document.getElementById('accuracyScore').textContent = '0%';
         renderRecentAnalyses();
       }
@@ -1335,7 +1336,10 @@ window.onload = function() {
 
       btn.disabled = true;
       btn.textContent = 'Analyzing...';
-      document.getElementById('analysisResults').style.display = 'none';
+      
+      const resultsDiv = document.getElementById('analysisResults');
+      resultsDiv.style.display = 'block';
+      resultsDiv.innerHTML = '<div class="loading">Analyzing...</div>';
 
       try {
         const body = type === 'text' 
@@ -1395,15 +1399,20 @@ window.onload = function() {
       const combinedScore = data.combinedScore || data.mlScore || 0;
 
       // Store analysis ID for reviews
-      currentAnalysisId = data.analysisId || data.id || Date.now().toString();
-
+      
       let verdictClass = 'uncertain';
       if (verdict.toLowerCase().includes('real') || verdict.toLowerCase().includes('true')) {
         verdictClass = 'real';
       } else if (verdict.toLowerCase().includes('fake') || verdict.toLowerCase().includes('false')) {
         verdictClass = 'fake';
       }
-
+      currentAnalysisId = data.analysisId || data.id || Date.now().toString();
+      document.getElementById('confidenceBar').style.width = confidence + '%';
+      document.getElementById('confidenceBar').style.height = '10px';
+      document.getElementById('confidenceBar').style.background =
+        verdictClass === 'real' ? '#10b981' :
+        verdictClass === 'fake' ? '#ef4444' : '#f59e0b';
+      
       document.getElementById('verdictDisplay').innerHTML = `
         <h3>Verdict: <span class="verdict ${verdictClass}">${verdict}</span></h3>
         <p style="color: #6b7280; margin-top: 10px;">Analyzing: ${headline}</p>
@@ -1434,9 +1443,13 @@ window.onload = function() {
       userAnalyses.slice().reverse().forEach((analysis, index) => {
         html += `
           <tr>
-            <td>${new Date(analysis.date).toLocaleDateString()}</td>
-            <td>${analysis.headline}</td>
-            <td><span class="verdict ${analysis.verdict.toLowerCase()}">${analysis.verdict}</span></td>
+            <td>${new Date(analysis.createdAt).toLocaleDateString()}</td>
+            <td>${escapeHtml(analysis.headline)}</td>
+            <td>
+              <span class="verdict ${escapeHtml(analysis.verdict.toLowerCase())}">
+                ${escapeHtml(analysis.verdict)}
+              </span>
+            </td>
             <td>${analysis.confidence}%</td>
             <td><button class="btn" style="width: auto; padding: 6px 12px; font-size: 14px;" onclick="viewDetails(${userAnalyses.length - 1 - index})">View</button></td>
           </tr>
@@ -1724,38 +1737,6 @@ function viewDetailsById(analysisId) {
       container.innerHTML = html;
     }
 // Call this from loadDashboard() or window.onload when app visible
-async function loadLiveNews(opts = {}) {
-  // opts: { q, category, country, pageSize }
-  const container = document.getElementById('liveNewsContainer');
-  if (!container) return;
-
-  container.innerHTML = '<div class="loading">Loading live headlines...</div>';
-
-  const params = new URLSearchParams();
-  if (opts.q) params.append('q', opts.q);
-  if (opts.category) params.append('category', opts.category);
-  if (opts.country) params.append('country', opts.country);
-  params.append('pageSize', opts.pageSize || 6);
-
-  try {
-    const resp = await fetch(`${API_BASE.replace('/api','')}/api/news?${params.toString()}`, {
-      method: 'GET'
-      // no auth required for proxied news endpoint (server holds the key)
-    });
-
-    if (!resp.ok) {
-      container.innerHTML = '<div class="empty-state">Failed to load live headlines.</div>';
-      return;
-    }
-
-    const data = await resp.json();
-    const articles = data.articles || [];
-    renderLiveNews(articles);
-  } catch (err) {
-    console.error('Live news load failed', err);
-    container.innerHTML = '<div class="empty-state">Unable to load live headlines.</div>';
-  }
-}
 
 function renderLiveNews(articles) {
   const container = document.getElementById('liveNewsContainer');
@@ -1807,7 +1788,7 @@ function renderLiveNews(articles) {
       </div>
     </div>
   `;
-    `;
+
   });
 
   container.innerHTML = html;
@@ -1831,9 +1812,7 @@ function verifyNews(encodedData) {
     behavior: 'smooth',
     block: 'center'
   });
-  setTimeout(() => {
-  document.getElementById('textAnalyzeBtn').click();
-}, 500);
+  handleAnalyze(new Event('submit'), 'text');
 }
 // keep a reference to the current auto-refresh timer
 let _liveNewsAutoRefreshTimer = null;
@@ -1867,18 +1846,16 @@ async function loadLiveNews(opts = {}) {
 
   try {
     // API_BASE is defined earlier in your script as 'http://127.0.0.1:5000/api'
-    const base = API_BASE.replace('/api',''); // evaluate to http://127.0.0.1:5000
-    const resp = await fetch(`${base}/api/news?${params.toString()}`, { method: 'GET' });
+   const resp = await fetch(`${API_BASE}/news?${params.toString()}`);
 
-    if (!resp.ok) {
-      console.warn('News fetch failed', resp.status);
-      container.innerHTML = '<div class="empty-state">Failed to load live headlines.</div>';
-      return;
-    }
-
-    const data = await resp.json();
-    const articles = data.articles || [];
-    renderLiveNews(articles);
+  if (!resp.ok) {
+    container.innerHTML = '<div class="empty-state">Failed to load live headlines.</div>';
+    return;
+  }
+  
+  const data = await resp.json();
+  const articles = data.articles || [];
+  renderLiveNews(articles);
   } catch (err) {
     console.error('Live news load failed', err);
     container.innerHTML = '<div class="empty-state">Unable to load live headlines.</div>';
