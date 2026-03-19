@@ -1784,17 +1784,17 @@ function renderLiveNews(articles) {
   
       <div style="display:flex;gap:10px;margin-top:10px;">
         <button class="btn" style="padding:8px;font-size:13px;"
-          onclick="verifyNews('${encodeURIComponent(JSON.stringify({
-            title: a.title,
-            description: a.description,
-            url: a.url
-          }))}')">
-          🔍 Verify
+         onclick='verifyNews(${JSON.stringify({
+          title: a.title,
+          description: a.description,
+          url: a.url
+        }).replace(/'/g, "&apos;")})'
+          Verify
         </button>
   
         <button class="btn" style="padding:8px;font-size:13px;background:#6b7280;"
           onclick="window.open('${a.url}', '_blank')">
-          🌐 Source
+          Source
         </button>
       </div>
   
@@ -1808,6 +1808,15 @@ function renderLiveNews(articles) {
 
   container.innerHTML = html;
 }
+    document.querySelectorAll('.verify-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    verifyNews(encodeURIComponent(JSON.stringify({
+      title: btn.dataset.title,
+      description: btn.dataset.desc,
+      url: btn.dataset.url
+    })));
+  });
+});
 // --- News controls wiring & enhanced loadLiveNews integration ---
 function verifyNews(encodedData) {
   const data = JSON.parse(decodeURIComponent(encodedData));
