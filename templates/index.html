@@ -318,7 +318,9 @@
       margin-bottom: -2px;
       transition: all 0.2s;
     }
-
+    #confidenceBar {
+      transition: width 0.6s ease, background 0.3s ease;
+    }
     .tab.active {
       color: #2563eb;
       border-bottom-color: #2563eb;
@@ -1339,8 +1341,12 @@ window.onload = function() {
       
       const resultsDiv = document.getElementById('analysisResults');
       resultsDiv.style.display = 'block';
-      resultsDiv.innerHTML = '<div class="loading">Analyzing...</div>';
 
+      document.getElementById('verdictDisplay').innerHTML = '<div class="loading">Analyzing...</div>';
+      document.getElementById('confidenceScore').textContent = '-';
+      document.getElementById('lstmScore').textContent = '-';
+      document.getElementById('cgpnnScore').textContent = '-';
+      document.getElementById('combinedScore').textContent = '-';
       try {
         const body = type === 'text' 
           ? { headline, content, category }
@@ -1396,7 +1402,10 @@ window.onload = function() {
       const confidence = data.confidence || 0;
       const lstmScore = data.lstmScore || 0;
       const cgpnnScore = data.cgpnnScore || 0;
-      const combinedScore = data.combinedScore || data.mlScore || 0;
+      const combinedScore = 
+      data.combinedScore ?? 
+      data.mlScore ?? 
+      0;
 
       // Store analysis ID for reviews
       
@@ -1414,9 +1423,15 @@ window.onload = function() {
         verdictClass === 'fake' ? '#ef4444' : '#f59e0b';
       
       document.getElementById('verdictDisplay').innerHTML = `
-        <h3>Verdict: <span class="verdict ${verdictClass}">${verdict}</span></h3>
-        <p style="color: #6b7280; margin-top: 10px;">Analyzing: ${headline}</p>
-      `;
+      <h3>Verdict: 
+        <span class="verdict ${verdictClass}">
+          ${escapeHtml(verdict)}
+        </span>
+      </h3>
+      <p style="color:#6b7280;margin-top:10px;">
+        Analyzing: ${escapeHtml(headline)}
+      </p>
+    `;
       
       document.getElementById('confidenceScore').textContent = confidence + '%';
       document.getElementById('lstmScore').textContent = lstmScore + '%';
@@ -1626,8 +1641,8 @@ function viewDetailsById(analysisId) {
     html += `
       <div class="review-item">
         <div class="review-header">
-          <span class="review-user">${username}</span>
-          <span class="review-verdict ${v}">${verdictText}</span>
+          <span class="review-user">${escapeHtml(username)}</span>
+          <div class="review-text">${escapeHtml(review.text || '')}</div>
         </div>
         <div class="review-text">${review.text || ''}</div>
         <div style="color:#6b7280;font-size:12px;margin-top:8px;">${new Date(review.timestamp || review.date || Date.now()).toLocaleString()}</div>
@@ -1688,8 +1703,8 @@ function viewDetailsById(analysisId) {
         html += `
           <div class="source-item">
             <div class="source-info">
-              <h4>${source.name}</h4>
-              <a href="${source.url}" target="_blank" class="source-url">${source.url}</a>
+              <h4>${escapeHtml(source.name)}</h4>
+              <a href="${escapeHtml(source.url)}">
             </div>
             <button class="rate-btn" onclick="rateSource('${source.name}')">Rate</button>
           </div>
@@ -1769,11 +1784,11 @@ function renderLiveNews(articles) {
   
       <div style="display:flex;gap:10px;margin-top:10px;">
         <button class="btn" style="padding:8px;font-size:13px;"
-          onclick="verifyNews(${encodeURIComponent(JSON.stringify({
+          onclick="verifyNews('${encodeURIComponent(JSON.stringify({
             title: a.title,
             description: a.description,
             url: a.url
-          }))})">
+          }))}')">
           🔍 Verify
         </button>
   
