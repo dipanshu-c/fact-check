@@ -780,10 +780,10 @@
           </select>
 
           <select id="newsPageSizeSelect" style="padding:12px; cursor: pointer; border:1px solid #ddd;border-radius:6px;">
-            <option value="4">2</option>
-            <option value="6" selected>4</option>
-            <option value="8">6</option>
-            <option value="10">8</option>
+            <option value="4">4</option>
+            <option value="6" selected>6</option>
+            <option value="8">8</option>
+            <option value="10">10</option>
           </select>
 
           <button id="newsRefreshBtn"  style="padding:12px; border:1px solid #ddd; border-radius:6px; background-color: #2c3e50; min-width: 23.5%; cursor: pointer;">Refresh</button>
@@ -1650,7 +1650,6 @@ function viewDetailsById(analysisId) {
           <span class="review-user">${escapeHtml(username)}</span>
           <div class="review-text">${escapeHtml(review.text || '')}</div>
         </div>
-        <div class="review-text">${review.text || ''}</div>
         <div style="color:#6b7280;font-size:12px;margin-top:8px;">${new Date(review.timestamp || review.date || Date.now()).toLocaleString()}</div>
       </div>
     `;
@@ -1789,14 +1788,13 @@ function renderLiveNews(articles) {
       </div>
   
       <div style="display:flex;gap:10px;margin-top:10px;">
-        <button class="btn" style="padding:8px;font-size:13px;"
-         onclick ='verifyNews(${JSON.stringify({
-          title: a.title,
-          description: a.description,
-          url: a.url
-        }).replace(/'/g, "&apos;")})'>
-          Verify
-        </button>
+        <button class="btn verify-btn"
+            data-title="${escapeHtml(a.title || '')}"
+            data-desc="${escapeHtml(a.description || '')}"
+            data-url="${escapeHtml(a.url || '')}"
+            style="padding:8px;font-size:13px;">
+            Verify
+          </button>
   
         <button class="btn" style="padding:8px;font-size:13px;background:#6b7280;"
           onclick="window.open('${a.url}', '_blank')">
@@ -1813,6 +1811,7 @@ function renderLiveNews(articles) {
   });
 
   container.innerHTML = html;
+  
   document.querySelectorAll('.verify-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     verifyNews(encodeURIComponent(JSON.stringify({
@@ -1843,7 +1842,9 @@ function verifyNews(encodedData) {
     behavior: 'smooth',
     block: 'center'
   });
+  setTimeout(() => {
   document.getElementById('textAnalyzeForm').dispatchEvent(new Event('submit'));
+}, 100);
 }
 // keep a reference to the current auto-refresh timer
 let _liveNewsAutoRefreshTimer = null;
