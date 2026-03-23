@@ -1850,14 +1850,14 @@ function viewDetailsById(analysisId) {
       let html = '';
       sources.forEach(source => {
         html += `
-          <div class="source-item">
-            <div class="source-info">
-              <h4>${escapeHtml(source.name)}</h4>
-              <a href="${escapeHtml(source.url)}">
+            <div class="source-item">
+              <div class="source-info">
+                <h4>${escapeHtml(source.name)}</h4>
+                <a href="${escapeHtml(source.url)}" target="_blank" class="source-url">${escapeHtml(source.url)}</a>
+              </div>
+              <button class="rate-btn" onclick="rateSource('${source.name}')">Rate</button>
             </div>
-            <button class="rate-btn" onclick="rateSource('${source.name}')">Rate</button>
-          </div>
-        `;
+          `;
       });
       
       container.innerHTML = html;
@@ -2003,20 +2003,18 @@ function debounce(fn, wait) {
     t = setTimeout(() => fn.apply(this, args), wait);
   };
 }
-
 async function loadLiveNews(opts = {}) {
   const container = document.getElementById('liveNewsContainer');
   if (!container) return;
 
   _liveNewsLastOpts = Object.assign({}, _liveNewsLastOpts, opts);
-
   container.innerHTML = '<div class="loading">Loading live headlines...</div>';
 
   const params = new URLSearchParams();
-  if (_liveNewsLastOpts.q) params.append('q', _liveNewsLastOpts.q);
-  if (_liveNewsLastOpts.category) params.append('category', _liveNewsLastOpts.category);
-  if (_liveNewsLastOpts.country) params.append('country', _liveNewsLastOpts.country);
-  params.append('pageSize', _liveNewsLastOpts.pageSize || 6);
+  if (_liveNewsLastOpts.q) params.set('q', _liveNewsLastOpts.q);
+  if (_liveNewsLastOpts.category) params.set('category', _liveNewsLastOpts.category);
+  if (_liveNewsLastOpts.country) params.set('country', _liveNewsLastOpts.country);
+  params.set('pageSize', String(_liveNewsLastOpts.pageSize || 6));
 
   try {
     const resp = await fetch(`/api/news?${params.toString()}`);
@@ -2028,7 +2026,6 @@ async function loadLiveNews(opts = {}) {
 
     const data = await resp.json();
     renderLiveNews(data.articles || []);
-
   } catch (err) {
     console.error('Live news load failed', err);
     container.innerHTML = '<div class="empty-state">Unable to load live headlines.</div>';
@@ -2037,48 +2034,24 @@ async function loadLiveNews(opts = {}) {
 
 // Attach event listeners to the controls (call once after page/app ready)
 function initNewsControls() {
-  const searchInput = document.getElementById('newsSearchInput');
-  const categorySelect = document.getElementById('newsCategorySelect');
-  const countrySelect = document.getElementById('newsCountrySelect');
-  const pageSizeSelect = document.getElementById('newsPageSizeSelect');
-  const refreshBtn = document.getElementById('newsRefreshBtn');
-  const autoRefreshSelect = document.getElementById('newsAutoRefresh');
-
-  if (!searchInput) return;
-
-  // set control values based on last opts
-  searchInput.value = _liveNewsLastOpts.q || '';
-  categorySelect.value = _liveNewsLastOpts.category || '';
-  countrySelect.value = _liveNewsLastOpts.country || 'in';
-  pageSizeSelect.value = String(_liveNewsLastOpts.pageSize || 6);
-
-  // debounced search
-  const debouncedSearch = debounce(() => {
-    const q = searchInput.value.trim();
-    _liveNewsLastOpts.q = q;
-    loadLiveNews({ q });
-  }, 450);
-
   searchInput.addEventListener('input', debouncedSearch);
 
-  categorySelect.addEventListener('change', () => {
-    const category = categorySelect.value;
-    loadLiveNews({ category });
-  });
+categorySelect.addEventListener('change', () => {
+  loadLiveNews({ category: categorySelect.value });
+});
 
-  countrySelect.addEventListener('change', () => {
-    const country = countrySelect.value;
-    loadLiveNews({ country });
-  });
+countrySelect.addEventListener('change', () => {
+  loadLiveNews({ country: countrySelect.value });
+});
 
-  pageSizeSelect.addEventListener('change', () => {
-    const pageSize = parseInt(pageSizeSelect.value, 10) || 6;
-    loadLiveNews({ pageSize });
-  });
+pageSizeSelect.addEventListener('change', () => {
+  loadLiveNews({ pageSize: parseInt(pageSizeSelect.value, 10) || 6 });
+});
 
-  refreshBtn.addEventListener('click', () => {
-    loadLiveNews({}); // re-use last opts
-  });
+refreshBtn.addEventListener('click', () => {
+  loadLiveNews({});
+});
+}
 
   // auto-refresh control
   function resetAutoRefresh() {
