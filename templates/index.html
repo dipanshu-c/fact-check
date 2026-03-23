@@ -1180,7 +1180,7 @@ window.onload = function() {
   }
 
   // initial news load (use default opts or previously selected)
-  loadLiveNews({ country: 'us', pageSize: 6 });
+  loadLiveNews({ country: 'in', pageSize: 6 });
 }
 
     // Toggle between login and register
@@ -1374,7 +1374,7 @@ window.onload = function() {
         document.getElementById('accuracyScore').textContent = '0%';
         renderRecentAnalyses();
       }
-      loadLiveNews({ country: 'us', pageSize: 6 });
+      loadLiveNews({ country: 'in', pageSize: 6 });
     }
 
     function renderRecentAnalyses() {
@@ -1917,7 +1917,7 @@ function renderLiveNews(articles) {
     const desc = a.description || '';
     const src = a.source || 'Unknown';
     const published = a.publishedAt ? new Date(a.publishedAt).toLocaleString() : '';
-    const image = a.urlToImage ? `<img src="${a.urlToImage}" alt="" style="width:100%;height:140px;object-fit:cover;border-radius:6px;margin-bottom:8px;">` : '';
+    const image = article.image ? `<img src="${article.image}" alt="" style="width:100%;height:140px;object-fit:cover;border-radius:6px;margin-bottom:8px;">` : '';
 
     html += `
     <div class="stat-card" style="padding:16px;display:flex;flex-direction:column;gap:8px;">
@@ -1993,7 +1993,7 @@ function verifyNews(encodedData) {
 // keep a reference to the current auto-refresh timer
 let _liveNewsAutoRefreshTimer = null;
 // keep last used options
-let _liveNewsLastOpts = { q: '', category: '', country: 'us', pageSize: 6 };
+let _liveNewsLastOpts = { q: '', category: '', country: 'in', pageSize: 10 };
 
 // debounce helper
 function debounce(fn, wait) {
@@ -2052,7 +2052,7 @@ function initNewsControls() {
   // set control values based on last opts
   searchInput.value = _liveNewsLastOpts.q || '';
   categorySelect.value = _liveNewsLastOpts.category || '';
-  countrySelect.value = _liveNewsLastOpts.country || 'us';
+  countrySelect.value = _liveNewsLastOpts.country || 'in';
   pageSizeSelect.value = String(_liveNewsLastOpts.pageSize || 6);
 
   // debounced search
