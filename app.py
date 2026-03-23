@@ -518,41 +518,38 @@ def get_news():
 
             for entry in feed.entries:
                 try:
-                    # ✅ SAFE DATE
+                    # safe date
                     if hasattr(entry, 'published_parsed') and entry.published_parsed:
                         dt = datetime(*entry.published_parsed[:6])
                         published = dt.isoformat()
                     else:
                         published = ""
-
-                    title = entry.get('title', '')
-                    description = entry.get('summary', '')
-
-                    # ✅ AI INTEGRATION
+            
+                    title = clean_html(entry.get('title', ''))
+                    description = clean_html(entry.get('summary', ''))
+            
+                    # SAFE IMAGE (VERY IMPORTANT)
+                    image = None
+                    if entry.get("media_content"):
+                        image = entry.media_content[0].get("url")
+            
+                    # AI prediction
                     pred = ml_model.predict(title, description)
-
-                    article = {
-                        'title': title,
-                        'description': description,
-                        'url': entry.get('link', ''),
-                        'source': source_name,
-                        'publishedAt': published,
-                        'urlToImage': entry.get("media_content", [{}])[0].get("url", None),
-                        # 🔥 AI OUTPUT
-                        'verdict': pred['verdict'],
-                        'confidence': pred['confidence']
-                    }
-
+            
+                    # ✅ SINGLE CLEAN OBJECT
                     articles.append({
-                        "title": clean_html(entry.get("title")),
-                        "description": clean_html(entry.get("summary")),
-                        "url": entry.get("link"),
-                        "urlToImage": entry.get("media_content", [{}])[0].get("url", None),
-                        "source": "Google News" if "google" in url else "Reuters",
-                        "publishedAt": entry.get("published")
+                        "title": title,
+                        "description": description,
+                        "url": entry.get("link", ""),
+                        "urlToImage": image,
+                        "source": source_name,
+                        "publishedAt": published,
+                        "verdict": pred['verdict'],
+                        "confidence": pred['confidence']
                     })
-
-                except Exception:
+            
+                except Exception as e:
+                    print("RSS parse error:", e)
                     continue
 
         # sort latest
