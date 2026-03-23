@@ -10,7 +10,7 @@ from pathlib import Path
 import requests
 import time
 from threading import Lock
-
+import feedparser
 import numpy as np
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
@@ -487,61 +487,51 @@ _news_cache = {}
 _news_cache_lock = Lock()
 _NEWS_CACHE_TTL = int(os.getenv("NEWS_CACHE_TTL", 30))  # seconds
 
-GNEWS_API_KEY = os.getenv("NEWSAPI_KEY")
 
 @app.route('/api/news', methods=['GET'])
 def get_news():
     try:
-        GNEWS_API_KEY = os.getenv("GNEWS_API_KEY")
+        sources = [
+            "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en",
+            "https://feeds.reuters.com/reuters/topNews"
+        ]
 
-        if not GNEWS_API_KEY:
-            return jsonify({'error': 'GNEWS_API_KEY missing'}), 500
+        articles = []
 
-        query = request.args.get('q', '')
-        country = request.args.get('country', 'in')
-        max_results = int(request.args.get('pageSize', 6))
+        for url in sources:
+            feed = feedparser.parse(url)
 
-        if query:
-            url = "https://gnews.io/api/v4/search"
-            params = {
-                'q': query,
-                'max': max_results,
-                'apikey': GNEWS_API_KEY
-            }
-        else:
-            url = "https://gnews.io/api/v4/top-headlines"
-            params = {
-                'country': country,
-                'max': max_results,
-                'apikey': GNEWS_API_KEY
-            }
+            for entry in feed.entries:
+                try:
+                    # Safe date parsing
+                    if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                        dt = datetime(*entry.published_parsed[:6])
+                        published = dt.isoformat()
+                    else:
+                        published = ""
 
-        print("👉 Calling GNews:", url, params)
+                    article = {
+                        'title': entry.get('title', ''),
+                        'description': entry.get('summary', ''),
+                        'url': entry.get('link', ''),
+                        'source': entry.get('source', {}).get('title', url),
+                        'publishedAt': published,
+                        'urlToImage': None
+                    }
 
-        response = requests.get(url, params=params, timeout=10)
+                    articles.append(article)
 
-        print("👉 Status:", response.status_code)
-        print("👉 Response:", response.text[:300])
+                except Exception:
+                    continue
 
-        if response.status_code != 200:
-            return jsonify({
-                'error': 'GNews failed',
-                'status': response.status_code,
-                'details': response.text
-            }), response.status_code
+        # Sort latest first
+        articles.sort(key=lambda x: x['publishedAt'], reverse=True)
 
-        data = response.json()
-
-        articles = [{
-            'title': a.get('title'),
-            'description': a.get('description'),
-            'url': a.get('url'),
-            'image': a.get('image'),
-            'source': a.get('source', {}).get('name'),
-            'publishedAt': a.get('publishedAt')
-        } for a in data.get('articles', [])]
-
-        return jsonify({'articles': articles}), 200
+        return jsonify({
+            'status': 'ok',
+            'totalResults': len(articles),
+            'articles': articles[:12]
+        })
 
     except Exception as e:
         import traceback
