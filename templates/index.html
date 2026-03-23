@@ -1930,7 +1930,7 @@ function renderLiveNews(articles) {
       </div>
 
     <div class="news-actions">
-      <button class="btn btn--primary"
+      <button class="btn" style="width:auto;padding:6px 12px;font-size:14px;"
         onclick="verifyNews('${encodeURIComponent(JSON.stringify({
           title: a.title || '',
           description: a.description || ''
@@ -1938,7 +1938,7 @@ function renderLiveNews(articles) {
         Verify
       </button>
     
-      <a href="${a.url}" target="_blank" class="btn btn--secondary">
+      <a href="${a.url}" target="_blank" class="btn" style="width:auto;padding:6px 12px;font-size:14px;">
         Source
       </a>
     </div>
