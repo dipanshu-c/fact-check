@@ -487,7 +487,12 @@ _news_cache = {}
 _news_cache_lock = Lock()
 _NEWS_CACHE_TTL = int(os.getenv("NEWS_CACHE_TTL", 30))  # seconds
 
-
+def clean_html(raw_html):
+    if not raw_html:
+        return ''
+    clean = re.sub('<.*?>', '', raw_html)
+    return clean.strip()
+    
 @app.route('/api/news', methods=['GET'])
 def get_news():
     try:
@@ -532,14 +537,21 @@ def get_news():
                         'url': entry.get('link', ''),
                         'source': source_name,
                         'publishedAt': published,
-                        'urlToImage': None,
+                        'urlToImage': entry.get("media_content", [{}])[0].get("url", None)
 
                         # 🔥 AI OUTPUT
                         'verdict': pred['verdict'],
                         'confidence': pred['confidence']
                     }
 
-                    articles.append(article)
+                    articles.append({
+                        "title": clean_html(entry.get("title")),
+                        "description": clean_html(entry.get("summary")),
+                        "url": entry.get("link"),
+                        "urlToImage": entry.get("media_content", [{}])[0].get("url", None)
+                        "source": "Google News" if "google" in url else "Reuters",
+                        "publishedAt": entry.get("published")
+                    })
 
                 except Exception:
                     continue
