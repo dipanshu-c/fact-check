@@ -2111,8 +2111,10 @@ function escapeHtml(str) {
     }
     
     // AUTO HIDE AFTER APP LOAD
-    window.addEventListener("load", () => {
-      setTimeout(hideLoader, 800); // smooth delay
+   window.addEventListener("load", () => {
+      setTimeout(() => {
+        document.getElementById("loadingScreen").classList.add("hidden");
+      }, 1000);
     });
   </script>
 </body>
