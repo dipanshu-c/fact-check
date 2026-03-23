@@ -699,98 +699,47 @@
         opacity: 0;
       }
     }
-    /* 🌌 FULLSCREEN LOADING */
-    #loadingScreen {
-      position: fixed;
-      inset: 0;
-      z-index: 9999;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: radial-gradient(circle at 30% 30%, rgba(99,102,241,0.2), transparent),
-                  radial-gradient(circle at 70% 70%, rgba(168,85,247,0.2), transparent),
-                  linear-gradient(135deg, #020617, #0f172a);
-      transition: opacity 0.6s ease, visibility 0.6s;
-    }
-    
-    /* HIDE STATE */
-    #loadingScreen.hidden {
-      opacity: 0;
-      visibility: hidden;
-    }
-    
-    /* GLASS CONTAINER */
-    .loader-container {
-      text-align: center;
-      padding: 40px 60px;
-      border-radius: 20px;
-      background: rgba(255,255,255,0.05);
-      backdrop-filter: blur(20px);
-      border: 1px solid rgba(255,255,255,0.08);
-      box-shadow: 0 20px 60px rgba(0,0,0,0.6);
-      animation: floatBox 3s ease-in-out infinite;
-    }
-    
-    /* FLOAT ANIMATION */
-    @keyframes floatBox {
-      0%, 100% { transform: translateY(0px); }
-      50% { transform: translateY(-8px); }
-    }
-    
-    /* AI SPINNER */
-    .ai-loader {
-      width: 70px;
-      height: 70px;
-      border-radius: 50%;
-      margin: 0 auto 20px;
-      background: conic-gradient(#6366f1, #a855f7, #22d3ee, #6366f1);
-      animation: spin 1.2s linear infinite;
-      position: relative;
-    }
-    
-    /* INNER GLOW */
-    .ai-loader::before {
-      content: "";
-      position: absolute;
-      inset: 6px;
-      background: #020617;
-      border-radius: 50%;
-    }
-    
-    /* SPIN */
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    
-    /* TITLE */
-    .loading-title {
-      font-size: 28px;
-      font-weight: 700;
-      background: linear-gradient(135deg, #60a5fa, #a78bfa);
-      -webkit-background-clip: text;
-      color: transparent;
-      margin-bottom: 6px;
-    }
-    
-    /* SUBTITLE */
-    .loading-subtitle {
-      color: #9ca3af;
-      font-size: 14px;
-      letter-spacing: 0.5px;
-    }
-    
-    /* OPTIONAL DOT ANIMATION */
-    .loading-subtitle::after {
-      content: "...";
-      animation: dots 1.5s steps(3, end) infinite;
-    }
-    
-    @keyframes dots {
-      0% { content: ""; }
-      33% { content: "."; }
-      66% { content: ".."; }
-      100% { content: "..."; }
-    }
+   /* ===================== LOADER ===================== */
+  #loadingScreen {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #020617;
+    transition: 0.5s;
+  }
+  
+  #loadingScreen.hidden {
+    opacity: 0;
+    visibility: hidden;
+  }
+  
+  .loader-container {
+    text-align: center;
+  }
+  
+  .ai-loader {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    margin: auto;
+    background: conic-gradient(#6366f1, #a855f7, #22d3ee, #6366f1);
+    animation: spin 1s linear infinite;
+  }
+  
+  .ai-loader::before {
+    content: "";
+    position: absolute;
+    inset: 6px;
+    background: #020617;
+    border-radius: 50%;
+  }
+  
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
   </style>
 </head>
 <body>
