@@ -1909,31 +1909,39 @@ function viewDetailsById(analysisId) {
 function renderLiveNews(articles) {
   const container = document.getElementById('liveNewsContainer');
 
-  if (!articles.length) {
+  if (!articles || articles.length === 0) {
     container.innerHTML = '<div class="empty-state">No news found</div>';
     return;
   }
 
   container.innerHTML = articles.map(a => `
-    <div class="stat-card" style="padding:12px;">
-      
-      <img src="${a.urlToImage || 'https://via.placeholder.com/300'}"
-           style="width:100%; height:140px; object-fit:cover; border-radius:10px; margin-bottom:10px;" />
+    <div class="news-card">
 
-      <h4 style="font-size:14px;">${a.title}</h4>
+      ${a.urlToImage ? `<img src="${a.urlToImage}" class="news-image">` : ''}
 
-      <p style="font-size:12px; color:#9ca3af;">
-        ${a.description || 'No description'}
+      <h3 class="news-title">${a.title || 'No title'}</h3>
+
+      <p class="news-desc">
+        ${a.description ? a.description.substring(0, 120) + '...' : ''}
       </p>
 
-      <div style="font-size:11px; margin-top:8px;">
-        📰 ${a.source}
+      <div class="news-footer">
+        <span class="news-source">📰 ${a.source || 'Unknown'}</span>
       </div>
 
-      <a href="${a.url}" target="_blank"
-         style="display:inline-block; margin-top:8px; color:#6366f1;">
-         Read →
+    <div class="news-actions">
+      <button class="btn btn--primary"
+        onclick="verifyNews('${encodeURIComponent(JSON.stringify({
+          title: a.title || '',
+          description: a.description || ''
+        }))}')">
+        Verify
+      </button>
+    
+      <a href="${a.url}" target="_blank" class="btn btn--secondary">
+        Source
       </a>
+    </div>
 
     </div>
   `).join('');
