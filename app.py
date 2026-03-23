@@ -537,8 +537,7 @@ def get_news():
                         'url': entry.get('link', ''),
                         'source': source_name,
                         'publishedAt': published,
-                        'urlToImage': entry.get("media_content", [{}])[0].get("url", None)
-
+                        'urlToImage': entry.get("media_content", [{}])[0].get("url", None),
                         # 🔥 AI OUTPUT
                         'verdict': pred['verdict'],
                         'confidence': pred['confidence']
@@ -548,7 +547,7 @@ def get_news():
                         "title": clean_html(entry.get("title")),
                         "description": clean_html(entry.get("summary")),
                         "url": entry.get("link"),
-                        "urlToImage": entry.get("media_content", [{}])[0].get("url", None)
+                        "urlToImage": entry.get("media_content", [{}])[0].get("url", None),
                         "source": "Google News" if "google" in url else "Reuters",
                         "publishedAt": entry.get("published")
                     })
