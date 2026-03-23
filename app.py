@@ -491,96 +491,71 @@ NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
 
 @app.route('/api/news', methods=['GET'])
 def get_news():
-    """
-    Proxy to NewsAPI.org with basic caching & robust error handling.
-    Query params:
-      - q (search query) optional -> uses /v2/everything
-      - category (top-headlines) optional
-      - country (top-headlines) optional, default 'us'
-      - pageSize optional (capped at 50)
-    """
-    if not NEWSAPI_KEY:
-        logger.error("Attempt to call /api/news without NEWSAPI_KEY set.")
-        return jsonify({'error': 'Server missing NEWSAPI_KEY (configure environment variable)'}), 500
+    GNEWS_API_KEY = os.getenv("GNEWS_API_KEY")
 
-    q = (request.args.get('q') or '').strip()
-    category = (request.args.get('category') or '').strip()
-    country = (request.args.get('country') or 'us').strip()
-    source = (request.args.get('source') or '').strip()
+    if not GNEWS_API_KEY:
+        return jsonify({'error': 'Missing GNEWS_API_KEY'}), 500
+
+    query = request.args.get('q', '').strip()
+    lang = request.args.get('lang', 'en')
+    country = request.args.get('country', 'us')
+    
     try:
-        page_size = int(request.args.get('pageSize', 6))
-    except Exception:
-        page_size = 6
-    page_size = max(1, min(page_size, 50))
+        max_results = int(request.args.get('max', 6))
+    except:
+        max_results = 6
 
-    # Build cache key
-    cache_key = f"q:{q}|cat:{category}|cty:{country}|src:{source}|ps:{page_size}"
+    max_results = max(1, min(max_results, 20))
 
-    # Try cache
-    now = time.time()
-    with _news_cache_lock:
-        cached = _news_cache.get(cache_key)
-        if cached and cached[0] > now:
-            logger.debug("Serving news from cache for key=%s", cache_key)
-            return jsonify(cached[1]), 200
-
-    # Choose endpoint
-    if q:
-        url = 'https://newsapi.org/v2/everything'
-        params = {'apiKey': NEWSAPI_KEY, 'q': q, 'pageSize': page_size, 'sortBy': 'publishedAt'}
+    # 🔁 Endpoint selection
+    if query:
+        url = "https://gnews.io/api/v4/search"
+        params = {
+            'q': query,
+            'lang': lang,
+            'max': max_results,
+            'apikey': GNEWS_API_KEY
+        }
     else:
-        url = 'https://newsapi.org/v2/top-headlines'
-        params = {'apiKey': NEWSAPI_KEY, 'pageSize': page_size}
-        if country:
-            params['country'] = country
-        if category:
-            params['category'] = category
-        if source:
-            params['sources'] = source
+        url = "https://gnews.io/api/v4/top-headlines"
+        params = {
+            'lang': lang,
+            'country': country,
+            'max': max_results,
+            'apikey': GNEWS_API_KEY
+        }
 
     try:
-        resp = requests.get(url, params=params, timeout=10)
-    except requests.RequestException as e:
-        logger.exception("Requests call to NewsAPI failed")
-        return jsonify({'error': 'Upstream request failed', 'detail': str(e)}), 502
+        response = requests.get(url, params=params, timeout=10)
+    except Exception as e:
+        return jsonify({'error': 'Request failed', 'details': str(e)}), 500
 
-    # If upstream returns non-200, forward a safe message and log details
-    if resp.status_code != 200:
-        logger.warning("NewsAPI returned status=%s body=%s", resp.status_code, resp.text[:400])
-        # Try to decode JSON for useful message
-        try:
-            j = resp.json()
-            msg = j.get('message') or j.get('status') or resp.text
-        except Exception:
-            msg = resp.text
-        return jsonify({'error': 'Upstream provider error', 'status': resp.status_code, 'message': msg}), resp.status_code
+    if response.status_code != 200:
+        return jsonify({
+            'error': 'GNews error',
+            'status': response.status_code,
+            'message': response.text
+        }), response.status_code
 
-    # Parse and normalize response for client
-    try:
-        data = resp.json()
-    except ValueError:
-        logger.error("Invalid JSON from NewsAPI")
-        return jsonify({'error': 'Invalid JSON from upstream provider'}), 502
+    data = response.json()
 
     articles = []
-    for a in data.get('articles', [])[:page_size]:
+    for a in data.get('articles', []):
         articles.append({
             'title': a.get('title'),
             'description': a.get('description'),
             'url': a.get('url'),
+            'image': a.get('image'),
             'source': a.get('source', {}).get('name'),
             'publishedAt': a.get('publishedAt'),
-            'urlToImage': a.get('urlToImage')
+            'content': a.get('content')
         })
 
-    payload = {'status': 'ok', 'totalResults': data.get('totalResults', 0), 'articles': articles}
-
-    # store in cache
-    with _news_cache_lock:
-        _news_cache[cache_key] = (time.time() + _NEWS_CACHE_TTL, payload)
-
-    return jsonify(payload), 200
-
+    return jsonify({
+        'status': 'ok',
+        'totalResults': data.get('totalArticles', 0),
+        'articles': articles
+    }), 200
 # ==================== Authentication Routes ====================
 @app.route('/api/auth/register', methods=['POST'])
 def register():
