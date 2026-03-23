@@ -1986,7 +1986,7 @@ async function loadLiveNews(opts = {}) {
     const category = document.getElementById('newsCategorySelect')?.value || '';
 
     // ✅ FIXED: await response
-    const resp = await fetch(`/api/news?country=${country}&category=${category}`);
+    const resp = await fetch(`/api/news`);
     
     // ✅ FIXED: check response
     if (!resp.ok) {
@@ -2011,44 +2011,49 @@ async function loadLiveNews(opts = {}) {
 }
 // Attach event listeners to the controls (call once after page/app ready)
 function initNewsControls() {
+  const searchInput = document.getElementById('newsSearchInput');
+  const categorySelect = document.getElementById('newsCategorySelect');
+  const countrySelect = document.getElementById('newsCountrySelect');
+  const pageSizeSelect = document.getElementById('newsPageSizeSelect');
+  const refreshBtn = document.getElementById('newsRefreshBtn');
+  const autoRefreshSelect = document.getElementById('newsAutoRefresh');
+
+  if (!searchInput || !categorySelect || !countrySelect || !pageSizeSelect || !refreshBtn) {
+    console.warn("News controls not found in DOM");
+    return;
+  }
+
+  // search (debounced)
+  const debouncedSearch = debounce(() => {
+    loadLiveNews();
+  }, 400);
+
   searchInput.addEventListener('input', debouncedSearch);
 
-categorySelect.addEventListener('change', () => {
-  loadLiveNews({ category: categorySelect.value });
-});
+  categorySelect.addEventListener('change', () => loadLiveNews());
+  countrySelect.addEventListener('change', () => loadLiveNews());
+  pageSizeSelect.addEventListener('change', () => loadLiveNews());
 
-countrySelect.addEventListener('change', () => {
-  loadLiveNews({ country: countrySelect.value });
-});
+  refreshBtn.addEventListener('click', () => loadLiveNews());
 
-pageSizeSelect.addEventListener('change', () => {
-  loadLiveNews({ pageSize: parseInt(pageSizeSelect.value, 10) || 6 });
-});
-
-refreshBtn.addEventListener('click', () => {
-  loadLiveNews({});
-});
-}
-
-  // auto-refresh control
+  // auto-refresh
   function resetAutoRefresh() {
     if (_liveNewsAutoRefreshTimer) {
       clearInterval(_liveNewsAutoRefreshTimer);
-      _liveNewsAutoRefreshTimer = null;
     }
+
     const t = parseInt(autoRefreshSelect.value, 10) || 0;
+
     if (t > 0) {
-      _liveNewsAutoRefreshTimer = setInterval(() => loadLiveNews({}), t * 1000);
+      _liveNewsAutoRefreshTimer = setInterval(() => {
+        loadLiveNews();
+      }, t * 1000);
     }
   }
 
   autoRefreshSelect.addEventListener('change', resetAutoRefresh);
-  // init auto-refresh (reads default select value)
   resetAutoRefresh();
 }
-
-// call initNewsControls when the app UI is shown
-// You already have showApp() — add the call inside it (see example below)
 
 // small helpers
 function truncate(s, n) {
