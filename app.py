@@ -487,75 +487,67 @@ _news_cache = {}
 _news_cache_lock = Lock()
 _NEWS_CACHE_TTL = int(os.getenv("NEWS_CACHE_TTL", 30))  # seconds
 
-NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
+GNEWS_API_KEY = os.getenv("NEWSAPI_KEY")
 
 @app.route('/api/news', methods=['GET'])
 def get_news():
-    GNEWS_API_KEY = os.getenv("GNEWS_API_KEY")
-
-    if not GNEWS_API_KEY:
-        return jsonify({'error': 'Missing GNEWS_API_KEY'}), 500
-
-    query = request.args.get('q', '').strip()
-    lang = request.args.get('lang', 'en')
-    country = request.args.get('country', 'us')
-    
     try:
-        max_results = int(request.args.get('max', 6))
-    except:
-        max_results = 6
+        GNEWS_API_KEY = os.getenv("GNEWS_API_KEY")
 
-    max_results = max(1, min(max_results, 20))
+        if not GNEWS_API_KEY:
+            return jsonify({'error': 'GNEWS_API_KEY missing'}), 500
 
-    # 🔁 Endpoint selection
-    if query:
-        url = "https://gnews.io/api/v4/search"
-        params = {
-            'q': query,
-            'lang': lang,
-            'max': max_results,
-            'apikey': GNEWS_API_KEY
-        }
-    else:
-        url = "https://gnews.io/api/v4/top-headlines"
-        params = {
-            'lang': lang,
-            'country': country,
-            'max': max_results,
-            'apikey': GNEWS_API_KEY
-        }
+        query = request.args.get('q', '')
+        country = request.args.get('country', 'in')
+        max_results = int(request.args.get('pageSize', 6))
 
-    try:
+        if query:
+            url = "https://gnews.io/api/v4/search"
+            params = {
+                'q': query,
+                'max': max_results,
+                'apikey': GNEWS_API_KEY
+            }
+        else:
+            url = "https://gnews.io/api/v4/top-headlines"
+            params = {
+                'country': country,
+                'max': max_results,
+                'apikey': GNEWS_API_KEY
+            }
+
+        print("👉 Calling GNews:", url, params)
+
         response = requests.get(url, params=params, timeout=10)
-    except Exception as e:
-        return jsonify({'error': 'Request failed', 'details': str(e)}), 500
 
-    if response.status_code != 200:
-        return jsonify({
-            'error': 'GNews error',
-            'status': response.status_code,
-            'message': response.text
-        }), response.status_code
+        print("👉 Status:", response.status_code)
+        print("👉 Response:", response.text[:300])
 
-    data = response.json()
+        if response.status_code != 200:
+            return jsonify({
+                'error': 'GNews failed',
+                'status': response.status_code,
+                'details': response.text
+            }), response.status_code
 
-    articles = []
-    for a in data.get('articles', []):
-        articles.append({
+        data = response.json()
+
+        articles = [{
             'title': a.get('title'),
             'description': a.get('description'),
             'url': a.get('url'),
             'image': a.get('image'),
             'source': a.get('source', {}).get('name'),
-            'publishedAt': a.get('publishedAt'),
-            'content': a.get('content')
-        })
+            'publishedAt': a.get('publishedAt')
+        } for a in data.get('articles', [])]
 
-    return jsonify({
-        'status': 'ok',
-        'totalResults': data.get('totalArticles', 0),
-        'articles': articles
-    }), 200
+        return jsonify({'articles': articles}), 200
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+        
 # ==================== Authentication Routes ====================
 @app.route('/api/auth/register', methods=['POST'])
 def register():
