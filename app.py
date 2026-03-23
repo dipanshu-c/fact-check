@@ -491,32 +491,52 @@ _NEWS_CACHE_TTL = int(os.getenv("NEWS_CACHE_TTL", 30))  # seconds
 @app.route('/api/news', methods=['GET'])
 def get_news():
     try:
+        cache_key = "news"
+        now = time.time()
+
+        # ✅ CACHE CHECK
+        with _news_cache_lock:
+            if cache_key in _news_cache:
+                expire, data = _news_cache[cache_key]
+                if now < expire:
+                    return jsonify(data)
+
         sources = [
-            "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en",
-            "https://feeds.reuters.com/reuters/topNews"
+            ("Google News", "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en"),
+            ("Reuters", "https://feeds.reuters.com/reuters/topNews")
         ]
 
         articles = []
 
-        for url in sources:
+        for source_name, url in sources:
             feed = feedparser.parse(url)
 
             for entry in feed.entries:
                 try:
-                    # Safe date parsing
+                    # ✅ SAFE DATE
                     if hasattr(entry, 'published_parsed') and entry.published_parsed:
                         dt = datetime(*entry.published_parsed[:6])
                         published = dt.isoformat()
                     else:
                         published = ""
 
+                    title = entry.get('title', '')
+                    description = entry.get('summary', '')
+
+                    # ✅ AI INTEGRATION
+                    pred = ml_model.predict(title, description)
+
                     article = {
-                        'title': entry.get('title', ''),
-                        'description': entry.get('summary', ''),
+                        'title': title,
+                        'description': description,
                         'url': entry.get('link', ''),
-                        'source': entry.get('source', {}).get('title', url),
+                        'source': source_name,
                         'publishedAt': published,
-                        'urlToImage': None
+                        'urlToImage': None,
+
+                        # 🔥 AI OUTPUT
+                        'verdict': pred['verdict'],
+                        'confidence': pred['confidence']
                     }
 
                     articles.append(article)
@@ -524,17 +544,22 @@ def get_news():
                 except Exception:
                     continue
 
-        # Sort latest first
+        # sort latest
         articles.sort(key=lambda x: x['publishedAt'], reverse=True)
 
-        return jsonify({
+        response = {
             'status': 'ok',
             'totalResults': len(articles),
             'articles': articles[:12]
-        })
+        }
+
+        # ✅ SAVE CACHE
+        with _news_cache_lock:
+            _news_cache[cache_key] = (now + _NEWS_CACHE_TTL, response)
+
+        return jsonify(response)
 
     except Exception as e:
-        import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
         
