@@ -10,3 +10,4 @@ scikit-learn==1.7.2   # needed if your saved model requires sklearn at load-time
 joblib==1.5.2        # if you use joblib to load model
 requests==2.32.5
 dnspython==2.8.0     # for mongodb+srv URIs
+feedparser=6.0.11
