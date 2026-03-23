@@ -1130,37 +1130,39 @@ window.onload = function() {
 
     // Check authentication status
     async function checkAuth() {
-  if (!authToken) {
-    showAuthScreen();
-    return;
-  }
-
-  try {
-    const response = await fetch(`${API_BASE}/auth/verify`, {
-      headers: { 'Authorization': `Bearer ${authToken}` }
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      // server returns user object in 'user'
-      currentUser = data.user || currentUser;
-      // persist
-      localStorage.setItem('fc_token', authToken);
-      localStorage.setItem('fc_user', JSON.stringify(currentUser));
-      showApp();
-      await loadUserAnalysesFromServer();
-      await loadUserReviewsFromServer();
-      await loadDashboard();
-    } else {
-      // token invalid
-      handleLogout();
+      if (!authToken) {
+        showAuthScreen();
+        hideLoader(); // 👈 ADD THIS
+        return;
+      }
+    
+      try {
+        const response = await fetch(`${API_BASE}/auth/verify`, {
+          headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+    
+        if (response.ok) {
+          const data = await response.json();
+          currentUser = data.user || currentUser;
+    
+          showApp();
+          hideLoader(); // 👈 ADD THIS
+    
+          await loadUserAnalysesFromServer();
+          await loadUserReviewsFromServer();
+          await loadDashboard();
+    
+        } else {
+          handleLogout();
+          hideLoader(); // 👈 ADD THIS
+        }
+    
+      } catch (error) {
+        console.error('Auth verification failed:', error);
+        handleLogout();
+        hideLoader(); // 👈 ADD THIS
+      }
     }
-  } catch (error) {
-    console.error('Auth verification failed:', error);
-    // keep user signed-out if verification fails
-    handleLogout();
-  }
-}
     // Show auth screen
     function showAuthScreen() {
       document.getElementById('authContainer').style.display = 'flex';
@@ -2104,17 +2106,15 @@ function escapeHtml(str) {
     });
 
     function hideLoader() {
-      const loader = document.getElementById('loadingScreen');
-      if (loader) {
-        loader.classList.add('hidden');
-      }
+      const loader = document.getElementById("loadingScreen");
+      if (loader) loader.classList.add("hidden");
     }
     
-    // AUTO HIDE AFTER APP LOAD
    window.addEventListener("load", () => {
       setTimeout(() => {
-        document.getElementById("loadingScreen").classList.add("hidden");
-      }, 1000);
+        const loader = document.getElementById("loadingScreen");
+        if (loader) loader.classList.add("hidden");
+      }, 1500);
     });
   </script>
 </body>
