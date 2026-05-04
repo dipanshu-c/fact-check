@@ -1,17 +1,18 @@
 # app.py
 import os
 import re
+import html
 import traceback
 import pickle
 from datetime import datetime, timedelta
 from pathlib import Path
-
-# add near other imports at top
+import certifi
 import requests
 import time
 from threading import Lock
 import feedparser
 import numpy as np
+from urllib.parse import urlparse
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
@@ -19,14 +20,12 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from pymongo import MongoClient
 from bson.objectid import ObjectId
 from dotenv import load_dotenv
-
-# machine-learning related imports used by loaded artifact
+load_dotenv()
 from scipy.sparse import hstack
 from sklearn.base import BaseEstimator, TransformerMixin
 
 load_dotenv()
 
-# Logging (add this near the top of app.py, right after imports)
 import logging
 
 logging.basicConfig(
@@ -38,7 +37,6 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)
 
-# Configuration
 app.config['JWT_SECRET_KEY'] = os.getenv(
     'JWT_SECRET_KEY',
     'factcheck-dipanshu-2005-11-07-secret-jwt-key-8171484821-2025-11-26'
@@ -47,59 +45,47 @@ app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=30)
 
 jwt = JWTManager(app)
 
-# --- MongoDB Connection (production-ready) ---
 MONGO_URI = os.getenv("MONGO_URI")
 if not MONGO_URI:
     logger.error("MONGO_URI environment variable not set. Exiting.")
-    # In production you may want to raise; here we exit to avoid running without DB.
     raise Exception("MONGO_URI environment variable not set")
 
 
-# Recommended connection options for Atlas
+
 mongo_options = {
-    "serverSelectionTimeoutMS": 10000,  # 10s - fail fast if cluster unreachable
+    "serverSelectionTimeoutMS": 10000, 
     "connectTimeoutMS": 10000,
     "socketTimeoutMS": None,
-    # If TLS required (Atlas does), PyMongo will negotiate automatically for mongodb+srv URIs.
-    # You can disable retryWrites only if you know it's needed: "retryWrites": True
 }
 
 try:
+    mongo_options["tls"] = True
+    mongo_options["tlsCAFile"] = certifi.where()
+
     client = MongoClient(MONGO_URI, **mongo_options)
-    # trigger server selection to verify connection at startup (raises on failure)
     client.admin.command("ping")
     logger.info("Connected to MongoDB successfully.")
 except Exception as e:
     logger.exception("Failed to connect to MongoDB with provided MONGO_URI.")
-    # fail fast so Render/Heroku/CI marks the deployment as bad
     raise
 
-# If the URI includes a default database name, client.get_default_database() will return it
 try:
     default_db = client.get_default_database()
 except Exception:
     default_db = None
 
-# Use the default DB from URI, otherwise fall back to an app-named DB
 db = default_db if default_db is not None else client['fakenews_detector']
 
-# Collections
 users_collection = db['users']
 analyses_collection = db['analyses']
 reviews_collection = db['reviews']
 sources_collection = db['sources']
 
-# Optional: create common indexes (idempotent)
 try:
     users_collection.create_index("email", unique=True)
-    # create other indexes as needed
 except Exception:
-    # don't crash on index creation errors, but log them
     logger.exception("Failed to create one or more DB indexes.")
-# --- end DB init ---
 
-
-# Initialize verified sources if empty
 def init_sources():
     if sources_collection.count_documents({}) == 0:
         default_sources = [
@@ -113,7 +99,16 @@ def init_sources():
         sources_collection.insert_many(default_sources)
 init_sources()
 
-# ------------------ EngineeredFeatures (needed for unpickling) ------------------
+def check_source_credibility(url):
+    if not url:
+        return 0.5
+
+    for source in sources_collection.find({"verified": True}):
+        if source["url"] in url:
+            return 1.0
+
+    return 0.3
+
 class EngineeredFeatures(BaseEstimator, TransformerMixin):
     def __init__(self):
         self.controversial = ['conspiracy', 'hoax', 'cover-up', 'fake']
@@ -163,9 +158,7 @@ class EngineeredFeatures(BaseEstimator, TransformerMixin):
                 round(min(coherence, 1.0), 6)
             ])
         return np.array(rows, dtype=float)
-# ---------------------------------------------------------------------------------
 
-# ------------------ Community consensus helper ------------------
 def calculate_community_consensus(analysis_id):
     """Calculate consensus from user reviews for an analysis."""
     try:
@@ -195,39 +188,168 @@ def calculate_community_consensus(analysis_id):
         'dominantVerdict': max(verdict_counts, key=verdict_counts.get)
     }
     return consensus
-# ---------------------------------------------------------------------------------
 
-# ------------------ Heuristic fallback model ------------------
+def clean_text(text):
+    text = text.lower()
+    text = re.sub(r"http\S+", "", text)
+    text = re.sub(r"[^a-z\s]", "", text)
+    return text
+
+def calculate_uncertainty(proba):
+        p = proba / 100
+        entropy = - (p * np.log(p + 1e-9) + (1 - p) * np.log(1 - p + 1e-9))
+        return entropy
+
+class TextPreprocessor:
+    def normalize(self, headline, content):
+        headline = html.unescape(headline or '')
+        content = html.unescape(content or '')
+        text = f"{headline} {content}"
+        text = re.sub(r'https?://\S+', ' URL ', text)
+        text = re.sub(r'\s+', ' ', text).strip()
+        return headline.strip(), content.strip(), text
+
+    def tokens(self, text):
+        return re.findall(r"\b[a-z][a-z'-]*\b", text.lower())
+
+
+class OptionalTransformerScorer:
+    """Uses a locally available BERT-style fake-news model when configured.
+
+    Set BERT_FAKE_NEWS_MODEL to a local Hugging Face model directory. The app
+    intentionally uses local_files_only=True so startup never downloads a model.
+    """
+    def __init__(self):
+        self.ready = False
+        self.tokenizer = None
+        self.model = None
+        self.labels = []
+        model_path = os.getenv("BERT_FAKE_NEWS_MODEL", "").strip()
+        if not model_path:
+            return
+
+        try:
+            from transformers import AutoModelForSequenceClassification, AutoTokenizer
+            self.tokenizer = AutoTokenizer.from_pretrained(model_path, local_files_only=True)
+            self.model = AutoModelForSequenceClassification.from_pretrained(model_path, local_files_only=True)
+            self.model.eval()
+            id2label = getattr(self.model.config, "id2label", {}) or {}
+            self.labels = [str(id2label.get(i, i)).lower() for i in range(self.model.config.num_labels)]
+            self.ready = True
+            logger.info("Loaded local transformer model from %s", model_path)
+        except Exception as e:
+            logger.warning("BERT_FAKE_NEWS_MODEL is set but could not be loaded locally: %s", e)
+
+    def real_score(self, text):
+        if not self.ready:
+            return None
+        try:
+            import torch
+            inputs = self.tokenizer(
+                text[:4000],
+                truncation=True,
+                max_length=512,
+                return_tensors="pt"
+            )
+            with torch.no_grad():
+                logits = self.model(**inputs).logits[0]
+                probs = torch.softmax(logits, dim=-1).detach().cpu().numpy()
+
+            real_idx = None
+            fake_idx = None
+            for i, label in enumerate(self.labels):
+                if any(word in label for word in ("real", "true", "reliable", "legit")):
+                    real_idx = i
+                if any(word in label for word in ("fake", "false", "misleading", "rumor")):
+                    fake_idx = i
+
+            if real_idx is not None:
+                return float(probs[real_idx] * 100)
+            if fake_idx is not None:
+                return float((1 - probs[fake_idx]) * 100)
+        except Exception as e:
+            logger.warning("Transformer scoring failed: %s", e)
+        return None
+
+
+TRANSFORMER_SCORER = OptionalTransformerScorer()
+
+TRUSTED_SOURCE_DOMAINS = {
+    'reuters.com', 'apnews.com', 'associatedpress.com', 'bbc.com', 'bbc.co.uk',
+    'nytimes.com', 'theguardian.com', 'aljazeera.com', 'npr.org', 'pbs.org',
+    'thehindu.com', 'indianexpress.com', 'hindustantimes.com', 'business-standard.com',
+    'nature.com', 'science.org', 'who.int', 'un.org', 'gov.in', 'nic.in'
+}
+
+def source_context_score(source_url):
+    if not source_url:
+        return 0.0, False
+    try:
+        host = urlparse(source_url).netloc.lower()
+        host = host[4:] if host.startswith('www.') else host
+        trusted = any(host == domain or host.endswith('.' + domain) for domain in TRUSTED_SOURCE_DOMAINS)
+        return (1.0 if trusted else 0.25), trusted
+    except Exception:
+        return 0.0, False
+
 class HeuristicFakeNewsModel:
     def __init__(self):
         from sklearn.feature_extraction.text import TfidfVectorizer
-        self.vectorizer = TfidfVectorizer(max_features=5000, stop_words='english')
 
-    def extract_features(self, headline, content):
-        headline = headline or ''
-        content = content or ''
-        text = (headline + ' ' + content).lower()
-        sensationalism = (text.count('!') + text.count('?')) / max(len(text.split()), 1)
-        credible_keywords = ['study', 'research', 'university', 'confirmed', 'verified']
+        vectorizer = TfidfVectorizer(
+            max_features=10000,
+            ngram_range=(1,2),
+            stop_words='english'
+        )
+
+    def extract_features(self, headline, content, source_url=''):
+        headline, content, raw_text = TextPreprocessor().normalize(headline, content)
+        text = raw_text.lower()
+        words = TextPreprocessor().tokens(text)
+        nwords = max(len(words), 1)
+        source_score, trusted_source = source_context_score(source_url)
+        sentence_count = len(re.findall(r'[.!?]+(?:\s|$)', raw_text))
+
+        sensationalism = (raw_text.count('!') + raw_text.count('?')) / nwords
+        credible_keywords = [
+            'study', 'research', 'university', 'confirmed', 'verified',
+            'official', 'statement', 'court', 'ministry', 'agency', 'reuters',
+            'associated press', 'bbc', 'according to'
+        ]
         source_credibility = sum(1 for kw in credible_keywords if kw in text) / len(credible_keywords)
         numbers = len(re.findall(r'\d+', text))
-        dates = len(re.findall(r'\d{1,2}/\d{1,2}/\d{4}', text))
-        specificity = (numbers + dates) / max(len(text.split()), 1)
-        emotional_words = ['shocking', 'unbelievable', 'outrageous', 'disgusting', 'amazing']
+        dates = len(re.findall(r'\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2}\b', text))
+        specificity = (numbers + dates) / nwords
+        emotional_words = [
+            'shocking', 'unbelievable', 'outrageous', 'disgusting', 'amazing',
+            'miracle', 'secret', 'exposed', 'banned', 'viral'
+        ]
         emotional = sum(1 for word in emotional_words if word in text) / len(emotional_words)
         passive_indicators = ['was', 'were', 'been', 'being']
-        passive = sum(1 for word in passive_indicators if word in text.split()) / max(len(text.split()), 1)
-        quotes = text.count('"') + text.count("'")
+        passive = sum(1 for word in passive_indicators if word in words) / nwords
+        quotes = raw_text.count('"') + raw_text.count("'")
         quote_factor = min(quotes / 4, 1.0)
-        expert_keywords = ['expert', 'scientist', 'doctor', 'professor', 'analyst']
+        expert_keywords = ['expert', 'scientist', 'doctor', 'professor', 'analyst', 'official', 'spokesperson']
         expert_reference = sum(1 for kw in expert_keywords if kw in text) / len(expert_keywords)
-        controversial = ['conspiracy', 'hoax', 'cover-up', 'fake']
+        controversial = [
+            'conspiracy', 'hoax', 'cover-up', 'fake', 'rumor', 'rumour',
+            'doctors hate', 'hidden truth', 'share before', 'wake up'
+        ]
         controversy = sum(1 for kw in controversial if kw in text) / len(controversial)
-        source_keywords = ['according to', 'reports say', 'sources claim', 'authorities say']
+        source_keywords = ['according to', 'reported by', 'authorities say', 'officials said', 'court said']
         multi_source = sum(1 for kw in source_keywords if kw in text) / len(source_keywords)
-        headline_words = set(headline.lower().split())
-        content_words = set(content.lower().split())
+        headline_words = set(TextPreprocessor().tokens(headline))
+        content_words = set(TextPreprocessor().tokens(content))
         coherence = len(headline_words.intersection(content_words)) / max(len(headline_words), 1)
+        evidence = min(source_credibility + specificity + quote_factor + expert_reference + multi_source + source_score * 0.35, 1.0)
+        risk = min(sensationalism + emotional + controversy, 1.0)
+        article_context = min(
+            (1 if nwords >= 35 else nwords / 35) * 0.5
+            + min(sentence_count / 4, 1.0) * 0.2
+            + min((numbers + dates) / 3, 1.0) * 0.15
+            + min((quote_factor + expert_reference + multi_source + source_credibility), 1.0) * 0.15,
+            1.0
+        )
 
         return {
             'sensationalism': min(sensationalism, 1.0),
@@ -239,34 +361,57 @@ class HeuristicFakeNewsModel:
             'expert_reference': min(expert_reference, 1.0),
             'controversy_level': min(controversy, 1.0),
             'multi_source': min(multi_source, 1.0),
-            'coherence': coherence
+            'coherence': min(coherence, 1.0),
+            'evidence_strength': evidence,
+            'fake_risk': risk,
+            'article_context': article_context,
+            'source_score': source_score,
+            'trusted_source': 1.0 if trusted_source else 0.0,
+            'word_count': float(nwords)
         }
 
-    def predict(self, headline, content):
-        f = self.extract_features(headline, content)
-        lstm_score = np.mean([f['source_credibility'], f['specificity'], f['coherence'], 1 - f['sensationalism'], f['multi_source']]) * 100
-        cgpnn_score = np.mean([f['expert_reference'], f['quote_presence'], f['multi_source'], 1 - f['controversy_level'], f['coherence']]) * 100
-        ml_score = (lstm_score * 0.6 + cgpnn_score * 0.4)
-        if ml_score >= 70:
+    def predict(self, headline, content, source_url=''):
+        f = self.extract_features(headline, content, source_url)
+        evidence_score = np.mean([
+            f['source_credibility'],
+            f['specificity'],
+            f['quote_presence'],
+            f['expert_reference'],
+            f['multi_source'],
+            f['coherence']
+        ]) * 100
+        risk_score = np.mean([
+            f['sensationalism'],
+            f['emotional_language'],
+            f['controversy_level'],
+            1 - f['coherence']
+        ]) * 100
+        ml_score = float(np.clip(50 + evidence_score * 0.7 - risk_score * 0.9, 1, 99))
+
+        has_evidence = f['evidence_strength'] >= 0.14 or f['article_context'] >= 0.72 or f['trusted_source'] >= 1.0
+        high_risk = f['fake_risk'] >= 0.16
+        if high_risk and ml_score < 55:
+            verdict = 'fake'
+            confidence = max(65, 100 - ml_score)
+        elif has_evidence and ml_score >= 62:
             verdict = 'real'
             confidence = ml_score
-        elif ml_score <= 40:
+        elif ml_score <= 42:
             verdict = 'fake'
             confidence = 100 - ml_score
         else:
             verdict = 'uncertain'
-            confidence = 50
+            confidence = int(abs(ml_score - 50) * 2)
+            confidence = int(np.clip(confidence, 0, 100))
         return {
             'verdict': verdict,
             'confidence': int(confidence),
             'mlScore': round(ml_score, 1),
-            'lstmScore': round(lstm_score, 1),
-            'cgpnnScore': round(cgpnn_score, 1),
+            'lstmScore': round(evidence_score, 1),
+            'cgpnnScore': round(100 - risk_score, 1),
             'factors': {k: round(v, 3) for k, v in f.items()}
         }
-# ---------------------------------------------------------------------------------
 
-# ------------------ Robust Pickle loader to handle multiple artifact shapes ------------------
 MODEL_PATH = os.path.join('models', 'fakenews_model.pkl')
 
 class PickleLoadedModel:
@@ -293,44 +438,203 @@ class PickleLoadedModel:
         else:
             self.clf = artifact
 
-    def _get_positive_index(self, classes=None):
-        if classes:
+    def _get_label_classes(self):
+        if self.label_classes is not None:
+            return [str(c).strip().lower() for c in self.label_classes]
+        if self.label_encoder is not None:
             try:
-                lower_classes = [str(c).strip().lower() for c in classes]
-                if 'real' in lower_classes:
-                    return lower_classes.index('real')
-                if '1' in lower_classes and '0' in lower_classes:
-                    return lower_classes.index('1')
-                return len(lower_classes) - 1
+                return [str(c).strip().lower() for c in self.label_encoder.classes_]
             except Exception:
-                pass
-        return 1
+                return None
+        return None
 
-    def predict(self, headline, content):
+    def _real_index_from_estimator(self, estimator):
+        label_classes = self._get_label_classes()
+        estimator_classes = list(getattr(estimator, 'classes_', []))
+
+        for i, encoded_class in enumerate(estimator_classes):
+            try:
+                encoded_index = int(encoded_class)
+                if label_classes and 0 <= encoded_index < len(label_classes):
+                    label = label_classes[encoded_index]
+                    if label in ('real', 'true', 'truth', 'genuine'):
+                        return i
+                elif str(encoded_class).strip().lower() in ('real', 'true', 'truth', 'genuine', '1'):
+                    return i
+            except Exception:
+                label = str(encoded_class).strip().lower()
+                if label in ('real', 'true', 'truth', 'genuine', '1'):
+                    return i
+
+        if label_classes and 'real' in label_classes:
+            return label_classes.index('real')
+        return 1 if len(estimator_classes) > 1 else 0
+
+    def _heuristic_real_score(self, headline, content, source_url=''):
+        analysis = self._heuristic_analysis(headline, content, source_url)
+        return analysis['score']
+
+    def _heuristic_analysis(self, headline, content, source_url=''):
+        f = HeuristicFakeNewsModel().extract_features(headline, content, source_url)
+        headline, content, raw_text = TextPreprocessor().normalize(headline, content)
+        text = raw_text.lower()
+        credible_phrases = [
+            'according to', 'confirmed', 'official', 'reported by', 'published',
+            'research', 'study', 'university', 'data', 'statement', 'reuters',
+            'associated press', 'bbc', 'authorities', 'commission', 'nasa',
+            'scientists', 'scientist', 'peer-reviewed', 'measurements', 'announces',
+            'confirms', 'said', 'reported', 'released', 'issued', 'court',
+            'ministry', 'government', 'police', 'hospital', 'agency',
+            'spokesperson', 'document', 'records', 'evidence', 'survey'
+        ]
+        sensational_phrases = [
+            'shocking', 'unbelievable', 'miracle', 'secret', 'doctors hate',
+            'government cover-up', 'cover-up', 'conspiracy', 'hoax', 'viral post',
+            'you will not believe', 'exposed', 'banned', 'hidden truth',
+            'wake up', 'share before', 'mainstream media', '100% true',
+            'guaranteed', 'must share', 'they do not want you to know',
+            'breaking shocking', 'cure overnight', 'no evidence'
+        ]
+
+        credible_hits = sum(1 for phrase in credible_phrases if phrase in text)
+        sensational_hits = sum(1 for phrase in sensational_phrases if phrase in text)
+        words = re.findall(r'\b[a-z]{2,}\b', text)
+        evidence_strength = f.get('evidence_strength', 0)
+        fake_risk = f.get('fake_risk', 0)
+        has_content = len(words) >= 12
+        article_like = f.get('article_context', 0) >= 0.72 and fake_risk < 0.12
+        trusted_source = f.get('trusted_source', 0) >= 1.0
+        has_evidence_gate = (
+            evidence_strength >= 0.14
+            or article_like
+            or trusted_source
+            or credible_hits >= 2
+            or (credible_hits >= 1 and (f['specificity'] > 0.02 or f['quote_presence'] > 0))
+        )
+        fake_gate = (
+            fake_risk >= 0.16
+            or sensational_hits >= 2
+            or (sensational_hits >= 1 and not has_evidence_gate)
+            or f['sensationalism'] >= 0.12
+        )
+
+        score = 50
+        score += f['source_credibility'] * 45
+        score += f['specificity'] * 140
+        score += f['expert_reference'] * 35
+        score += f['multi_source'] * 45
+        score += f['coherence'] * 20
+        score += f.get('article_context', 0) * 18
+        score += f.get('source_score', 0) * 20
+        score += min(credible_hits, 5) * 8
+        if has_content and has_evidence_gate and fake_risk < 0.12:
+            score += 6
+        score -= f['sensationalism'] * 70
+        score -= f['emotional_language'] * 45
+        score -= f['controversy_level'] * 65
+        score -= min(sensational_hits, 5) * 10
+
+        if trusted_source and not fake_gate:
+            score = max(score, 68)
+
+        if fake_gate:
+            score = min(score, 45)
+        elif not has_evidence_gate:
+            score = min(score, 60)
+
+        return {
+            'score': float(np.clip(score, 1, 99)),
+            'factors': f,
+            'hasEvidence': has_evidence_gate,
+            'fakeRisk': fake_gate,
+            'articleLike': article_like,
+            'trustedSource': trusted_source,
+            'credibleHits': credible_hits,
+            'sensationalHits': sensational_hits,
+            'transformerScore': TRANSFORMER_SCORER.real_score(raw_text)
+        }
+
+    def _prediction_from_real_score(self, real_score, factors=None):
+
+        confidence = 0
+
+        if real_score >= 62:
+            verdict = 'real'
+            confidence = real_score
+
+        elif real_score <= 38:
+            verdict = 'fake'
+            confidence = 100 - real_score
+
+        elif 45 <= real_score <= 55:
+            verdict = 'uncertain'
+            confidence = int(abs(real_score - 50) * 2)
+
+        else:
+            if real_score > 50:
+                verdict = 'lean_real'
+            else:
+                verdict = 'lean_fake'
+
+            confidence = int(abs(real_score - 50) * 2)
+
+        confidence = int(np.clip(confidence, 0, 100))
+
+        return {
+            'verdict': verdict,
+            'confidence': confidence,
+            'mlScore': round(float(real_score), 1),
+            'lstmScore': None,
+            'cgpnnScore': None,
+            'factors': factors or {}
+        }
+    
+    def _calibrated_prediction(self, headline, content, model_real_score, factors=None, source_url=''):
+        heuristic = self._heuristic_analysis(headline, content, source_url)
+        heuristic_real_score = heuristic['score']
+        transformer_score = heuristic.get('transformerScore')
+        disagreement = abs(model_real_score - heuristic_real_score)
+
+        if transformer_score is not None:
+            real_score = (model_real_score * 0.2) + (heuristic_real_score * 0.35) + (transformer_score * 0.45)
+        elif disagreement >= 30:
+            real_score = (model_real_score * 0.15) + (heuristic_real_score * 0.85)
+        else:
+            real_score = (model_real_score * 0.6) + (heuristic_real_score * 0.4)
+
+        if heuristic['fakeRisk'] and model_real_score < 55:
+            real_score = min(real_score, 40)
+        elif heuristic.get('trustedSource'):
+            real_score = max(real_score, 68)
+        elif heuristic.get('articleLike') and real_score >= 54:
+            real_score = max(real_score, 60)
+        elif not heuristic['hasEvidence']:
+            real_score = min(real_score, 56)
+
+        merged_factors = factors or heuristic.get('factors') or {}
+        result = self._prediction_from_real_score(real_score, factors=merged_factors)
+        result['modelScore'] = round(float(model_real_score), 1)
+        result['heuristicScore'] = round(float(heuristic_real_score), 1)
+        result['bertScore'] = round(float(transformer_score), 1) if transformer_score is not None else None
+        result['hasEvidence'] = bool(heuristic['hasEvidence'])
+        result['fakeRisk'] = bool(heuristic['fakeRisk'])
+        result['articleLike'] = bool(heuristic.get('articleLike'))
+        result['trustedSource'] = bool(heuristic.get('trustedSource'))
+        return result
+
+    def predict(self, headline, content, source_url=''):
         combined = (headline or '') + " " + (content or '')
-
-        # TFIDF + engineered features + scaler + clf
         if self.tfidf is not None and self.eng is not None and self.scaler is not None and self.clf is not None:
             tf = self.tfidf.transform([combined])
             eng = self.eng.transform([(headline or '', content or '')])
             X = hstack([tf, self.scaler.transform(eng)])
 
-            classes = None
-            if self.label_classes:
-                classes = self.label_classes
-            elif self.label_encoder is not None:
-                try:
-                    classes = list(self.label_encoder.classes_)
-                except Exception:
-                    classes = None
-
-            pos_index = self._get_positive_index(classes)
-
             try:
                 proba_arr = self.clf.predict_proba(X)[0]
-                if pos_index < 0 or pos_index >= len(proba_arr):
-                    pos_index = int(np.argmax(proba_arr))
-                proba = float(proba_arr[pos_index]) * 100.0
+                real_index = self._real_index_from_estimator(self.clf)
+                if real_index < 0 or real_index >= len(proba_arr):
+                    real_index = int(np.argmax(proba_arr))
+                proba = float(proba_arr[real_index]) * 100.0
             except Exception:
                 try:
                     score = self.clf.decision_function(X)[0]
@@ -338,34 +642,16 @@ class PickleLoadedModel:
                 except Exception:
                     proba = 50.0
 
-            verdict = 'real' if proba >= 60 else ('fake' if proba <= 40 else 'uncertain')
-            confidence = int(round(proba if verdict == 'real' else (100 - proba) if verdict == 'fake' else 50))
-            return {
-                'verdict': verdict,
-                'confidence': confidence,
-                'mlScore': round(proba, 1),
-                'lstmScore': None,
-                'cgpnnScore': None,
-                'factors': {}
-            }
+            return self._calibrated_prediction(headline, content, proba, source_url=source_url)
 
-        # vectorizer + model fallback
         if self.vectorizer is not None and self.model is not None:
             X = self.vectorizer.transform([combined])
             try:
                 proba_arr = self.model.predict_proba(X)[0]
-                classes = None
-                if self.label_classes:
-                    classes = self.label_classes
-                elif self.label_encoder is not None:
-                    try:
-                        classes = list(self.label_encoder.classes_)
-                    except Exception:
-                        classes = None
-                pos_index = self._get_positive_index(classes)
-                if pos_index < 0 or pos_index >= len(proba_arr):
-                    pos_index = int(np.argmax(proba_arr))
-                proba = float(proba_arr[pos_index]) * 100.0
+                real_index = self._real_index_from_estimator(self.model)
+                if real_index < 0 or real_index >= len(proba_arr):
+                    real_index = int(np.argmax(proba_arr))
+                proba = float(proba_arr[real_index]) * 100.0
             except Exception:
                 try:
                     score = self.model.decision_function(X)[0]
@@ -373,30 +659,15 @@ class PickleLoadedModel:
                 except Exception:
                     proba = 50.0
 
-            verdict = 'real' if proba >= 60 else ('fake' if proba <= 40 else 'uncertain')
-            confidence = int(round(proba if verdict == 'real' else (100 - proba) if verdict == 'fake' else 50))
-            return {
-                'verdict': verdict,
-                'confidence': confidence,
-                'mlScore': round(proba, 1),
-                'lstmScore': None,
-                'cgpnnScore': None,
-                'factors': {}
-            }
+            return self._calibrated_prediction(headline, content, proba, source_url=source_url)
 
-        # last-resort classifier that accepts raw text
         if self.clf is not None:
             try:
                 proba_arr = self.clf.predict_proba([combined])[0]
-                pos_index = 1
-                if hasattr(self.clf, 'classes_') and len(self.clf.classes_) > 1:
-                    try:
-                        pos_index = list(self.clf.classes_).index(1) if 1 in list(self.clf.classes_) else 1
-                    except Exception:
-                        pos_index = 1
-                if pos_index < 0 or pos_index >= len(proba_arr):
-                    pos_index = int(np.argmax(proba_arr))
-                proba = float(proba_arr[pos_index]) * 100.0
+                real_index = self._real_index_from_estimator(self.clf)
+                if real_index < 0 or real_index >= len(proba_arr):
+                    real_index = int(np.argmax(proba_arr))
+                proba = float(proba_arr[real_index]) * 100.0
             except Exception:
                 try:
                     score = self.clf.decision_function([combined])[0]
@@ -404,20 +675,10 @@ class PickleLoadedModel:
                 except Exception:
                     proba = 50.0
 
-            verdict = 'real' if proba >= 60 else ('fake' if proba <= 40 else 'uncertain')
-            confidence = int(round(proba if verdict == 'real' else (100 - proba) if verdict == 'fake' else 50))
-            return {
-                'verdict': verdict,
-                'confidence': confidence,
-                'mlScore': round(proba, 1),
-                'lstmScore': None,
-                'cgpnnScore': None,
-                'factors': {}
-            }
+            return self._calibrated_prediction(headline, content, proba, source_url=source_url)
 
         return {'verdict': 'uncertain', 'confidence': 50, 'mlScore': 50.0, 'lstmScore': None, 'cgpnnScore': None, 'factors': {}}
 
-# Attempt to load artifact
 ml_model = None
 if os.path.exists(MODEL_PATH):
     try:
@@ -430,15 +691,70 @@ if os.path.exists(MODEL_PATH):
         traceback.print_exc()
         ml_model = None
 
-# fallback to heuristic
-if ml_model is None:
-    print("[INFO] Using fallback heuristic model (no trained artifact found or failed to load).")
-    ml_model = HeuristicFakeNewsModel()
-# ---------------------------------------------------------------------------------
+class HybridFakeNewsSystem:
+    def __init__(self, ml_model, heuristic_model):
+        self.ml_model = ml_model
+        self.heuristic_model = heuristic_model
 
-# ------------------ Prediction with community feedback ------------------
-def predict_with_community_feedback(headline, content, analysis_id=None):
-    ml_prediction = ml_model.predict(headline, content)
+    def predict(self, headline, content, source_url=""):
+        if self.ml_model:
+            ml_pred = self.ml_model.predict(headline, content, source_url=source_url)
+        else:
+            ml_pred = {'mlScore': 50, 'confidence': 50}
+        heur_pred = self.heuristic_model.predict(headline, content, source_url=source_url)
+
+        ml_score = ml_pred.get("mlScore", 50)
+        heur_score = heur_pred.get("mlScore", 50)
+
+        ml_weight = 0.7 if ml_pred.get("confidence", 50) > 60 else 0.5
+        heur_weight = 1 - ml_weight
+
+        final_score = (ml_score * ml_weight) + (heur_score * heur_weight)
+
+        final_score = 50 + (final_score - 50) * 1.3
+        final_score = np.clip(final_score, 0, 100)
+
+        if abs(ml_score - heur_score) < 10:
+            if final_score > 50:
+                final_score += 5
+            else:
+                final_score -= 5
+
+        source_boost, _ = source_context_score(source_url)
+        final_score = (final_score * 0.85) + (source_boost * 100 * 0.25)
+
+        if final_score >= 60:
+            verdict = "real"
+        elif final_score <= 40:
+            verdict = "fake"
+        else:
+            verdict = "uncertain"
+
+        confidence = int(abs(final_score - 50) * 2)
+        confidence = int(np.clip(confidence, 0, 100))
+
+        return {
+            "verdict": verdict,
+            "confidence": confidence,
+            "mlScore": round(final_score, 2),
+            "modelScore": ml_score,
+            "heuristicScore": heur_score,
+            "weights": {
+                "ml": ml_weight,
+                "heuristic": heur_weight
+            },
+            "agreement": abs(ml_score - heur_score),
+            "reason": {
+                "ml_vs_heuristic_gap": abs(ml_score - heur_score),
+                "dominant_signal": "ml" if ml_score > heur_score else "heuristic"
+            }
+        }
+    
+heuristic_model = HeuristicFakeNewsModel()
+hybrid_model = HybridFakeNewsSystem(ml_model, heuristic_model)
+
+def predict_with_community_feedback(headline, content, analysis_id=None, source_url=''):
+    ml_prediction = hybrid_model.predict(headline, content, source_url=source_url)
 
     community_consensus = None
     if analysis_id:
@@ -464,7 +780,8 @@ def predict_with_community_feedback(headline, content, analysis_id=None):
         final_confidence = 100 - blended_score
     else:
         final_verdict = 'uncertain'
-        final_confidence = 50
+        uncertainty = calculate_uncertainty(blended_score)
+        final_confidence = int(np.clip((1 - uncertainty) * 100, 0, 100))
 
     enhanced_prediction = ml_prediction.copy()
     enhanced_prediction['verdict'] = final_verdict
@@ -477,12 +794,10 @@ def predict_with_community_feedback(headline, content, analysis_id=None):
     }
 
     return enhanced_prediction, community_consensus
-# ---------------------------------------------------------------------------------
+
 @app.route('/', methods=['GET'])
-# Add near other imports at top if not already present
 def home_page():
     return render_template('index.html')
-# Simple in-memory cache (key -> (expire_ts, payload))
 _news_cache = {}
 _news_cache_lock = Lock()
 _NEWS_CACHE_TTL = int(os.getenv("NEWS_CACHE_TTL", 30))  # seconds
@@ -492,14 +807,43 @@ def clean_html(raw_html):
         return ''
     clean = re.sub('<.*?>', '', raw_html)
     return clean.strip()
+
+def extract_url_content(url):
+    """Fetch a URL and extract enough page text for the local model."""
+    if not url or not re.match(r'^https?://', url.strip(), re.I):
+        return '', ''
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+    }
+    response = requests.get(url.strip(), headers=headers, timeout=10)
+    response.raise_for_status()
+
+    html = response.text or ''
+    title = ''
+    title_match = re.search(r'<title[^>]*>(.*?)</title>', html, flags=re.I | re.S)
+    if title_match:
+        title = clean_html(title_match.group(1))
+
+    meta_desc = ''
+    meta_match = re.search(
+        r'<meta[^>]+(?:name|property)=["\'](?:description|og:description)["\'][^>]+content=["\'](.*?)["\']',
+        html,
+        flags=re.I | re.S
+    )
+    if meta_match:
+        meta_desc = clean_html(meta_match.group(1))
+
+    paragraphs = re.findall(r'<p[^>]*>(.*?)</p>', html, flags=re.I | re.S)
+    paragraph_text = ' '.join(clean_html(p) for p in paragraphs[:8])
+    content = (meta_desc + ' ' + paragraph_text).strip()
+    return title[:300], content[:5000]
     
 @app.route('/api/news', methods=['GET'])
 def get_news():
     try:
         cache_key = "news"
         now = time.time()
-
-        # ✅ CACHE CHECK
         with _news_cache_lock:
             if cache_key in _news_cache:
                 expire, data = _news_cache[cache_key]
@@ -507,18 +851,23 @@ def get_news():
                     return jsonify(data)
 
         sources = [
-            ("Google News", "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en"),
-            ("Reuters", "https://feeds.reuters.com/reuters/topNews")
+            ("BBC", "http://feeds.bbci.co.uk/news/rss.xml"),
+            ("NYTimes", "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml"),
+            ("Al Jazeera", "https://www.aljazeera.com/xml/rss/all.xml")
         ]
 
         articles = []
 
         for source_name, url in sources:
-            feed = feedparser.parse(url)
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+            }
+
+            response = requests.get(url, headers=headers, timeout=10)
+            feed = feedparser.parse(response.content)
 
             for entry in feed.entries:
                 try:
-                    # safe date
                     if hasattr(entry, 'published_parsed') and entry.published_parsed:
                         dt = datetime(*entry.published_parsed[:6])
                         published = dt.isoformat()
@@ -528,15 +877,12 @@ def get_news():
                     title = clean_html(entry.get('title', ''))
                     description = clean_html(entry.get('summary', ''))
             
-                    # SAFE IMAGE (VERY IMPORTANT)
                     image = None
                     if entry.get("media_content"):
                         image = entry.media_content[0].get("url")
             
-                    # AI prediction
-                    pred = ml_model.predict(title, description)
+                    pred = hybrid_model.predict(title, description, source_url=entry.get("link", ""))
             
-                    # ✅ SINGLE CLEAN OBJECT
                     articles.append({
                         "title": title,
                         "description": description,
@@ -552,7 +898,6 @@ def get_news():
                     print("RSS parse error:", e)
                     continue
 
-        # sort latest
         articles.sort(key=lambda x: x['publishedAt'], reverse=True)
 
         response = {
@@ -561,7 +906,6 @@ def get_news():
             'articles': articles[:12]
         }
 
-        # ✅ SAVE CACHE
         with _news_cache_lock:
             _news_cache[cache_key] = (now + _NEWS_CACHE_TTL, response)
 
@@ -571,7 +915,6 @@ def get_news():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
         
-# ==================== Authentication Routes ====================
 @app.route('/api/auth/register', methods=['POST'])
 def register():
     data = request.get_json() or {}
@@ -645,11 +988,11 @@ def verify_token():
         'isAdmin': user.get('isAdmin', False)
     }), 200
 
-# ==================== Analysis Routes ====================
 @app.route('/api/analyze', methods=['POST'])
 @jwt_required()
 def analyze_news():
     current_user_id = get_jwt_identity()
+
     try:
         user_obj_id = ObjectId(current_user_id)
     except Exception:
@@ -661,11 +1004,35 @@ def analyze_news():
     url = data.get('url', '') or ''
     category = data.get('category', 'general') or 'general'
 
-    if not headline and not content and not url:
+    if url and not headline and not content:
+        try:
+            headline, content = extract_url_content(url)
+        except Exception as e:
+            logger.warning("Failed to extract URL content for %s: %s", url, e)
+            return jsonify({'error': 'Could not read that URL. Please paste the headline and content instead.'}), 400
+
+    if not headline and not content:
         return jsonify({'error': 'No content provided'}), 400
 
-    # run ML model
-    prediction = ml_model.predict(headline, content)
+    prediction, community = predict_with_community_feedback(headline, content, source_url=url)
+
+    try:
+        eng = EngineeredFeatures()
+        feat_arr = eng.transform([(headline, content)])[0]
+
+        feat_names = [
+            'sensationalism','source_credibility','specificity','emotional_language',
+            'passive_voice','quote_presence','expert_reference','controversy',
+            'multi_source','coherence'
+        ]
+
+        factors = dict(zip(feat_names, [round(float(x), 3) for x in feat_arr]))
+
+        top_factors = sorted(factors.items(), key=lambda x: abs(x[1]), reverse=True)[:3]
+
+    except Exception:
+        factors = {}
+        top_factors = []
 
     analysis = {
         'userId': user_obj_id,
@@ -673,37 +1040,82 @@ def analyze_news():
         'content': content,
         'url': url,
         'category': category,
-        'verdict': prediction.get('verdict'),
-        'confidence': int(prediction.get('confidence') or 0),
-        'mlScore': float(prediction.get('mlScore') or 0.0),
-        'lstmScore': prediction.get('lstmScore', None),
-        'cgpnnScore': prediction.get('cgpnnScore', None),
-        'factors': prediction.get('factors') or {},
+        'verdict': prediction['verdict'],
+        'confidence': prediction['confidence'],
+        'mlScore': prediction.get('mlScore', 50),
+        'modelScore': prediction.get('modelScore'),
+        'heuristicScore': prediction.get('heuristicScore'),
+        'bertScore': prediction.get('bertScore'),
+        'hasEvidence': prediction.get('hasEvidence'),
+        'fakeRisk': prediction.get('fakeRisk'),
+        'articleLike': prediction.get('articleLike'),
+        'trustedSource': prediction.get('trustedSource'),
+        'factors': factors,
+        'topFactors': top_factors,
         'communityVote': {'real': 0, 'fake': 0, 'uncertain': 0},
-        'communityInfluence': None,
+        'communityInfluence': prediction.get('communityInfluence'),
         'createdAt': datetime.utcnow()
     }
 
     result = analyses_collection.insert_one(analysis)
-    users_collection.update_one({'_id': user_obj_id}, {'$inc': {'analysisCount': 1}})
+
+    users_collection.update_one(
+        {'_id': user_obj_id},
+        {'$inc': {'analysisCount': 1}}
+    )
+    reasoning = []
+
+    if prediction.get("modelScore", 50) > prediction.get("heuristicScore", 50):
+        reasoning.append("ML model confidence is stronger than heuristic patterns.")
+    else:
+        reasoning.append("Heuristic signals influenced the decision more strongly.")
+
+    if prediction.get("agreement", 0) > 25:
+        reasoning.append("Model disagreement detected → lower reliability.")
+
+    if prediction.get("trustedSource"):
+        reasoning.append("Source is verified → credibility boosted.")
+
+    if prediction.get("fakeRisk"):
+        reasoning.append("High fake-news linguistic patterns detected.")
+
+    claims = extract_claims(content)
+    claim_scores = []
+    for c in claims[:5]:
+        try:
+            pred = hybrid_model.predict("", c)
+            claim_scores.append(pred.get('mlScore', 50))
+        except Exception:
+            claim_scores.append(50)
+
+    claim_variance = np.std(claim_scores) if claim_scores else 0
 
     return jsonify({
         'analysisId': str(result.inserted_id),
         'headline': headline,
-        'content': content,
-        'url': url,
-        'verdict': prediction.get('verdict'),
-        'confidence': int(prediction.get('confidence') or 0),
-        'mlScore': float(prediction.get('mlScore') or 0.0),
-        'lstmScore': prediction.get('lstmScore', None),
-        'cgpnnScore': prediction.get('cgpnnScore', None),
-        'factors': prediction.get('factors') or {},
-        'communityVote': analysis['communityVote'],
-        'createdAt': analysis['createdAt'].isoformat()
+        'verdict': prediction['verdict'],
+        'confidence': prediction['confidence'],
+        'mlScore': prediction.get('mlScore', 50),
+        'modelScore': prediction.get('modelScore'),
+        "hasEvidence": bool(re.search(r"(source|report|according to|study)", content.lower())),
+        'heuristicScore': prediction.get('heuristicScore'),
+        'bertScore': prediction.get('bertScore'),
+        'hasEvidence': prediction.get('hasEvidence'),
+        'fakeRisk': prediction.get('fakeRisk'),
+        'articleLike': prediction.get('articleLike'),
+        'trustedSource': prediction.get('trustedSource'),
+        'factors': factors,
+        'topFactors': top_factors,
+        'communityConsensus': community,
+        'createdAt': analysis['createdAt'].isoformat(),
+        'reasoning': reasoning,
+        'claimConsistency': round(100 - claim_variance, 2)
     }), 201
-
 from operator import itemgetter
 
+def extract_claims(text):
+    sentences = re.split(r'[.!?]', text)
+    return [s.strip() for s in sentences if len(s.split()) > 6]
 
 @app.route('/api/analyze/explain', methods=['POST'])
 @jwt_required()
@@ -712,13 +1124,21 @@ def explain_analysis():
     headline = data.get('headline', '')
     content = data.get('content', '')
 
+    pred = hybrid_model.predict(headline, content)
 
-    # run model (or heuristic) to get factors
-    pred = ml_model.predict(headline, content)
+    eng = EngineeredFeatures()
+    feat_arr = eng.transform([(headline, content)])[0]
+
+    feat_names = [
+        'sensationalism','source_credibility','specificity','emotional_language',
+        'passive_voice','quote_presence','expert_reference','controversy',
+        'multi_source','coherence'
+    ]
+
+    factors = dict(zip(feat_names, [float(round(float(x), 3)) for x in feat_arr]))
+    
     factors = pred.get('factors') or {}
 
-
-    # If factors empty and we have EngineeredFeatures available, compute them
     try:
         eng = EngineeredFeatures()
         feat_arr = eng.transform([(headline, content)])[0]
@@ -727,13 +1147,9 @@ def explain_analysis():
     except Exception:
         pass
 
-
-    # top 3 contributors by magnitude (absolute)
     top3 = sorted(factors.items(), key=lambda kv: abs(kv[1]), reverse=True)[:3]
     return jsonify({'factors': factors, 'topContributors': top3, 'rawPrediction': pred}), 200
 
-
-# Create a new review (logged-in users only) — robust version
 @app.route('/api/reviews', methods=['POST'])
 @jwt_required()
 def create_review():
@@ -755,9 +1171,7 @@ def create_review():
     if analysis_id:
         try:
             analysis_obj_id = ObjectId(analysis_id)
-            # optional: check existence
             if not analyses_collection.find_one({'_id': analysis_obj_id}):
-                # don't fail — log and continue, we still keep the review
                 print(f"[WARN] create_review: analysis id provided but not found: {analysis_id}")
                 analysis_obj_id = None
         except Exception:
@@ -766,7 +1180,7 @@ def create_review():
 
     review_doc = {
         'userId': user_obj_id,
-        'analysisId': analysis_obj_id,    # may be None
+        'analysisId': analysis_obj_id,   
         'verdict': verdict,
         'text': text,
         'helpful': 0,
@@ -776,7 +1190,6 @@ def create_review():
     try:
         result = reviews_collection.insert_one(review_doc)
         users_collection.update_one({'_id': user_obj_id}, {'$inc': {'reviewCount': 1}})
-        # update aggregate counters on analysis if valid
         if analysis_obj_id:
             try:
                 analyses_collection.update_one(
@@ -789,7 +1202,6 @@ def create_review():
         return jsonify({
             'success': True,
             'reviewId': str(result.inserted_id),
-            # return canonical timestamp property name 'timestamp' to match server responses
             'timestamp': review_doc['createdAt'].isoformat()
         }), 201
     except Exception as e:
@@ -839,7 +1251,6 @@ def get_consensus(analysis_id):
         return jsonify({'consensus': None, 'message': 'No reviews yet'}), 200
     return jsonify({'consensus': consensus}), 200
 
-# ==================== User analyses endpoint (persistent history) ====================
 @app.route('/api/user/analyses', methods=['GET'])
 @jwt_required()
 def get_user_analyses():
@@ -853,7 +1264,6 @@ def get_user_analyses():
     results = []
     for a in cursor:
         aid = a.get('_id')
-        # get sample reviews (latest 5)
         rev_docs = list(reviews_collection.find({'analysisId': aid}).sort('createdAt', -1).limit(5))
         sample_reviews = []
         for r in rev_docs:
@@ -882,6 +1292,13 @@ def get_user_analyses():
             'verdict': a.get('verdict'),
             'confidence': a.get('confidence'),
             'mlScore': a.get('mlScore'),
+            'modelScore': a.get('modelScore'),
+            'heuristicScore': a.get('heuristicScore'),
+            'bertScore': a.get('bertScore'),
+            'hasEvidence': a.get('hasEvidence'),
+            'fakeRisk': a.get('fakeRisk'),
+            'articleLike': a.get('articleLike'),
+            'trustedSource': a.get('trustedSource'),
             'communityVote': a.get('communityVote', {}),
             'communityConsensus': consensus,
             'sampleReviews': sample_reviews,
@@ -927,7 +1344,6 @@ def user_reviews_endpoint():
         })
     return jsonify({'reviews': out}), 200
 
-# ==================== Sources & analytics (unchanged, kept for compatibility) ====================
 @app.route('/api/sources', methods=['GET'])
 def get_sources():
     sources = list(sources_collection.find())
@@ -1042,7 +1458,6 @@ def get_all_users():
         } for u in users]
     }), 200
 
-# Error handlers
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({'error': 'Not found'}), 404
@@ -1055,4 +1470,4 @@ def server_error(error):
 if __name__ == "__main__":
     import os
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(port=port)
