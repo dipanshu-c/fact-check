@@ -330,6 +330,29 @@
       overflow: hidden;
     }
 
+    .news-card {
+      background: rgba(255,255,255,0.05);
+      backdrop-filter: blur(12px);
+      border-radius: 16px;
+      padding: 14px;
+      transition: 0.3s;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .news-card:hover {
+      transform: translateY(-5px);
+    }
+
+    .news-image {
+      width: 100%;
+      height: 160px;
+      object-fit: cover;
+      border-radius: 8px;
+      display: block;
+      margin-bottom: 10px;
+    }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -567,6 +590,32 @@
       margin-top: 30px;
       padding-top: 30px;
       border-top: 2px solid #ddd;
+    }
+
+    .consensus-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .consensus-card {
+      background: #f3f4f6;
+      border-radius: 8px;
+      padding: 14px;
+      text-align: center;
+      color: #1f2937;
+    }
+
+    .consensus-card strong {
+      display: block;
+      font-size: 20px;
+      color: #2563eb;
+    }
+
+    .consensus-card span {
+      color: #6b7280;
+      font-size: 13px;
     }
 
     .review-item {
@@ -1024,27 +1073,32 @@
                 <div class="score-value" id="confidenceScore">-</div>
               </div>
               <div class="score-item">
-                <div class="score-label">LSTM Score</div>
+                <div class="score-label">Model Score</div>
                 <div class="score-value" id="lstmScore">-</div>
               </div>
               <div class="score-item">
-                <div class="score-label">CGPNN Score</div>
+                <div class="score-label">BERT / Reasoning</div>
                 <div class="score-value" id="cgpnnScore">-</div>
               </div>
               <div class="score-item">
-                <div class="score-label">Combined Score</div>
+                <div class="score-label">Final Score</div>
                 <div class="score-value" id="combinedScore">-</div>
               </div>
             </div>
             <div style="background:#ddd;border-radius:10px;">
               <div id="confidenceBar"></div>
             </div>
+            <div id="reasoningNote" style="margin:16px 20px;color:#d1d5db;"></div>
             <!-- Add Review Button -->
             <button class="add-review-btn" onclick="openReviewModal()">📝 Add Your Review</button>
             
             <!-- Community Reviews -->
             <div class="community-reviews">
-              <h3 style="margin-bottom: 20px;">Community Reviews</h3>
+              <h3 style="margin-bottom: 20px;">Community Consensus</h3>
+              <div id="communityConsensusBox">
+                <div class="empty-state">No community votes yet.</div>
+              </div>
+              <h3 style="margin: 24px 0 20px;">Community Reviews</h3>
               <div id="communityReviewsList">
                 <div class="loading">Loading reviews...</div>
               </div>
@@ -1528,8 +1582,16 @@ window.onload = function() {
   lstmScore: data.lstmScore || 0,
   cgpnnScore: data.cgpnnScore || 0,
   mlScore: data.mlScore || data.combinedScore || 0,
+  modelScore: data.modelScore,
+  heuristicScore: data.heuristicScore,
+  bertScore: data.bertScore,
+  hasEvidence: data.hasEvidence,
+  fakeRisk: data.fakeRisk,
+  articleLike: data.articleLike,
+  trustedSource: data.trustedSource,
   sampleReviews: data.sampleReviews || [],
   communityVote: data.communityVote || {},
+  communityConsensus: data.communityConsensus || null,
   createdAt: data.createdAt || new Date().toISOString()
 });
 
@@ -1560,6 +1622,13 @@ window.onload = function() {
       data.combinedScore ?? 
       data.mlScore ?? 
       0;
+      const modelScore = data.modelScore;
+      const heuristicScore = data.heuristicScore;
+      const bertScore = data.bertScore;
+      const hasEvidence = data.hasEvidence;
+      const fakeRisk = data.fakeRisk;
+      const articleLike = data.articleLike;
+      const trustedSource = data.trustedSource;
 
       // Store analysis ID for reviews
       
@@ -1588,9 +1657,17 @@ window.onload = function() {
     `;
       
       document.getElementById('confidenceScore').textContent = confidence + '%';
-      document.getElementById('lstmScore').textContent = lstmScore + '%';
-      document.getElementById('cgpnnScore').textContent = cgpnnScore + '%';
+      document.getElementById('lstmScore').textContent = modelScore != null ? modelScore + '%' : lstmScore + '%';
+      document.getElementById('cgpnnScore').textContent = bertScore != null ? bertScore + '%' : (heuristicScore != null ? heuristicScore + '%' : cgpnnScore + '%');
       document.getElementById('combinedScore').textContent = combinedScore + '%';
+      const reasons = [];
+      if (fakeRisk) reasons.push('Fake-news language or risky claim pattern detected.');
+      if (trustedSource) reasons.push('Known reliable source/domain detected.');
+      if (articleLike) reasons.push('Article-style context detected: enough body text, details, and low manipulation risk.');
+      if (hasEvidence === false) reasons.push('No strong source, quote, date, authority, or evidence was found, so it cannot be marked real.');
+      if (bertScore == null) reasons.push('Local BERT model is not configured; using logistic regression plus strict text reasoning.');
+      document.getElementById('reasoningNote').textContent = reasons.join(' ');
+      displayConsensus(data.communityConsensus || null);
 
       document.getElementById('analysisResults').style.display = 'block';
       
@@ -1646,6 +1723,14 @@ function viewDetailsById(analysisId) {
       lstmScore: a.lstmScore || 0,
       cgpnnScore: a.cgpnnScore || 0,
       mlScore: a.mlScore || a.combinedScore || 0,
+      modelScore: a.modelScore,
+      heuristicScore: a.heuristicScore,
+      bertScore: a.bertScore,
+      hasEvidence: a.hasEvidence,
+      fakeRisk: a.fakeRisk,
+      articleLike: a.articleLike,
+      trustedSource: a.trustedSource,
+      communityConsensus: a.communityConsensus || null,
       createdAt: a.createdAt
     }, a.headline || a.url);
     currentAnalysisId = a.analysisId || a.id || a._id;
@@ -1757,11 +1842,11 @@ function viewDetailsById(analysisId) {
       container.innerHTML = '<div class="loading">Loading reviews...</div>';
 
       try {
-        const response = await fetch(`${API_BASE}/reviews/${analysisId}`, {
-          headers: {
-            'Authorization': `Bearer ${authToken}`
-          }
-        });
+        const headers = { 'Authorization': `Bearer ${authToken}` };
+        const [response, consensusResponse] = await Promise.all([
+          fetch(`${API_BASE}/reviews/${analysisId}`, { headers }),
+          fetch(`${API_BASE}/reviews/${analysisId}/consensus`, { headers })
+        ]);
 
         if (response.ok) {
           const data = await response.json();
@@ -1772,12 +1857,64 @@ function viewDetailsById(analysisId) {
           const localReviews = userReviews.filter(r => r.analysisId === analysisId);
           displayCommunityReviews(localReviews);
         }
+
+        if (consensusResponse.ok) {
+          const consensusData = await consensusResponse.json();
+          displayConsensus(consensusData.consensus || null);
+        } else {
+          displayConsensus(calculateLocalConsensus(analysisId));
+        }
       } catch (error) {
         console.error('Failed to load reviews:', error);
         // Show local reviews
         const localReviews = userReviews.filter(r => r.analysisId === analysisId);
         displayCommunityReviews(localReviews);
+        displayConsensus(calculateLocalConsensus(analysisId));
       }
+    }
+
+    function calculateLocalConsensus(analysisId) {
+      const localReviews = userReviews.filter(r => r.analysisId === analysisId);
+      if (!localReviews.length) return null;
+
+      const counts = { real: 0, fake: 0, uncertain: 0 };
+      localReviews.forEach(review => {
+        const verdict = (review.verdict || 'uncertain').toLowerCase();
+        counts[verdict in counts ? verdict : 'uncertain'] += 1;
+      });
+
+      const total = counts.real + counts.fake + counts.uncertain;
+      return {
+        real: Math.round((counts.real / total) * 1000) / 10,
+        fake: Math.round((counts.fake / total) * 1000) / 10,
+        uncertain: Math.round((counts.uncertain / total) * 1000) / 10,
+        totalReviews: total,
+        dominantVerdict: Object.keys(counts).reduce((best, key) => counts[key] > counts[best] ? key : best, 'real')
+      };
+    }
+
+    function displayConsensus(consensus) {
+      const box = document.getElementById('communityConsensusBox');
+      if (!box) return;
+
+      if (!consensus || !consensus.totalReviews) {
+        box.innerHTML = '<div class="empty-state">No community votes yet.</div>';
+        return;
+      }
+
+      const dominant = consensus.dominantVerdict || 'uncertain';
+      const dominantText = dominant === 'real' ? 'Real' : dominant === 'fake' ? 'Fake' : 'Uncertain';
+      box.innerHTML = `
+        <div class="consensus-summary">
+          <div class="consensus-card"><strong>${escapeHtml(String(consensus.real || 0))}%</strong><span>Real</span></div>
+          <div class="consensus-card"><strong>${escapeHtml(String(consensus.fake || 0))}%</strong><span>Fake</span></div>
+          <div class="consensus-card"><strong>${escapeHtml(String(consensus.uncertain || 0))}%</strong><span>Uncertain</span></div>
+          <div class="consensus-card"><strong>${escapeHtml(String(consensus.totalReviews || 0))}</strong><span>Total Reviews</span></div>
+        </div>
+        <p style="color:#d1d5db;">Dominant community verdict:
+          <span class="review-verdict ${escapeHtml(dominant)}">${escapeHtml(dominantText)}</span>
+        </p>
+      `;
     }
 
     // Display community reviews
@@ -1796,8 +1933,9 @@ function viewDetailsById(analysisId) {
       <div class="review-item">
         <div class="review-header">
           <span class="review-user">${escapeHtml(username)}</span>
-          <div class="review-text">${escapeHtml(review.text || '')}</div>
+          <span class="review-verdict ${escapeHtml(v)}">${escapeHtml(verdictText)}</span>
         </div>
+          <div class="review-text">${escapeHtml(review.text || '')}</div>
         <div style="color:#6b7280;font-size:12px;margin-top:8px;">${new Date(review.timestamp || review.date || Date.now()).toLocaleString()}</div>
       </div>
     `;
@@ -1917,7 +2055,11 @@ function renderLiveNews(articles) {
   container.innerHTML = articles.map(a => `
     <div class="news-card">
 
-      ${a.urlToImage ? `<img src="${a.urlToImage}" class="news-image">` : ''}
+      ${a.urlToImage ? `<img 
+        src="${a.urlToImage || 'https://via.placeholder.com/400x200?text=No+Image'}" 
+        class="news-image"
+        onerror="this.src='https://via.placeholder.com/400x200?text=Image+Error'"
+      >` : ''}
 
       <h3 class="news-title">${a.title || 'No title'}</h3>
 
