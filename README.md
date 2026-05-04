@@ -24,18 +24,12 @@ Fact Check is a tool that helps users verify the accuracy of claims and statemen
 ```
 fact-check/
 ├── README.md
-├── app/
-│   ├── __init__.py
-│   ├── main.py
-│   └── ...
+├── models/
+│   ├── fakenews_model.pkl
+│   └── features.py
+├── app.py
 ├── templates/
-│   ├── index.html
-│   ├── results.html
-│   └── ...
-├── static/
-│   ├── css/
-│   ├── js/
-│   └── images/
+│   └── index.html
 └── requirements.txt
 ```
 
