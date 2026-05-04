@@ -43,14 +43,27 @@
     }
 
     .auth-box {
-      background: #ffffff;
       padding: 40px;
       border-radius: 8px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.1);
       width: 100%;
       max-width: 400px;
+      background: rgba(255,255,255,0.08);
+       border: 1px solid rgba(255,255,255,0.15);
+    }
+   
+    .auth-box input,
+    .auth-box textarea,
+    .auth-box select {
+      background: #ffffff;        
+      color: #111827;             
+      border: 1px solid #d1d5db;
     }
 
+    .auth-box input::placeholder,
+    .auth-box textarea::placeholder {
+      color: #6b7280;
+    }
     .auth-box h1 {
       font-size: 28px;
       margin-bottom: 10px;
@@ -82,10 +95,14 @@
       padding: 12px;
       border-radius: 6px;
       font-size: 14px;
-      transition: border-color 0.2s;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.1);
-      color: white;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: #ffffff;            
+      caret-color: #ffffff;        
+    }
+    .form-group input::placeholder,
+    .form-group textarea::placeholder {
+      color: rgba(255,255,255,0.5);
     }
 
     .form-group input:focus,
@@ -172,13 +189,11 @@
       font-size: 14px;
     }
 
-    /* App Container */
     .app-container {
       display: none;
       min-height: 100vh;
     }
 
-    /* Header */
     .header {
       background: #ffffff;
       border-bottom: 1px solid #ddd;
@@ -286,7 +301,6 @@
       color: #2c3e50;
     }
 
-    /* Stats Cards */
     .stats-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -321,7 +335,6 @@
       color: #2563eb;
     }
 
-    /* Table */
     .table-container {
       background: rgba(255,255,255,0.05);
       border: 1px solid rgba(255,255,255,0.1);
@@ -381,7 +394,6 @@
       color: #6b7280;
     }
 
-    /* Analyze Form */
     .tabs {
       display: flex;
       gap: 10px;
@@ -433,7 +445,6 @@
       box-shadow: 0 20px 50px rgba(0,0,0,0.5);
     }
 
-    /* Results */
     .results {
       background: rgba(255, 255, 255, 0.05);
       backdrop-filter: blur(16px);
@@ -503,7 +514,6 @@
       color: #6b7280;
     }
 
-    /* Modal */
     .modal {
       display: none;
       position: fixed;
@@ -700,7 +710,6 @@
       background: #1d4ed8;
     }
 
-    /* Responsive */
     @media (max-width: 768px) {
       .header-content {
         flex-direction: column;
@@ -748,7 +757,7 @@
         opacity: 0;
       }
     }
-   /* ===================== LOADER ===================== */
+
   #loadingScreen {
     position: fixed;
     inset: 0;
@@ -799,7 +808,6 @@
       <p class="loading-subtitle">Analyzing Reality...</p>
     </div>
   </div>
-  <!-- Auth Container (Login/Register) -->
   <div id="authContainer" class="auth-container">
     <div class="auth-box">
       <!-- Login Form -->
@@ -1077,19 +1085,26 @@
                 <div class="score-value" id="lstmScore">-</div>
               </div>
               <div class="score-item">
-                <div class="score-label">BERT / Reasoning</div>
+                <div class="score-label">Reasoning</div>
                 <div class="score-value" id="cgpnnScore">-</div>
               </div>
               <div class="score-item">
-                <div class="score-label">Final Score</div>
+                <div class="sco-label">Final Score</div>
                 <div class="score-value" id="combinedScore">-</div>
               </div>
             </div>
             <div style="background:#ddd;border-radius:10px;">
               <div id="confidenceBar"></div>
             </div>
-            <div id="reasoningNote" style="margin:16px 20px;color:#d1d5db;"></div>
-            <!-- Add Review Button -->
+            <div id="reasoningNote" style="
+              margin:16px 20px;
+              padding:12px;
+              background:rgba(255,255,255,0.05);
+              border-left:4px solid #8b5cf6;
+              border-radius:6px;
+              color:#e5e7eb;
+              font-size:14px;
+            "></div><!-- Add Review Button -->
             <button class="add-review-btn" onclick="openReviewModal()">📝 Add Your Review</button>
             
             <!-- Community Reviews -->
@@ -1167,26 +1182,22 @@
     let currentAnalysisId = null;
     let userReviews = [];
 
-    // restore auth state from localStorage on load
-window.onload = function() {
-  const savedToken = localStorage.getItem('fc_token');
-  const savedUser = localStorage.getItem('fc_user');
-  if (savedToken) {
-    authToken = savedToken;
-    try { currentUser = savedUser ? JSON.parse(savedUser) : null; } catch(e) { currentUser = null; }
-    // verify token and refresh data
-    checkAuth();
-  } else {
-    showAuthScreen();
-  }
-};
+    window.onload = function() {
+      const savedToken = localStorage.getItem('fc_token');
+      const savedUser = localStorage.getItem('fc_user');
+      if (savedToken) {
+        authToken = savedToken;
+        try { currentUser = savedUser ? JSON.parse(savedUser) : null; } catch(e) { currentUser = null; }
+        checkAuth();
+      } else {
+        showAuthScreen();
+      }
+    };
 
-
-    // Check authentication status
     async function checkAuth() {
       if (!authToken) {
         showAuthScreen();
-        hideLoader(); // 👈 ADD THIS
+        hideLoader();
         return;
       }
     
@@ -1200,7 +1211,7 @@ window.onload = function() {
           currentUser = data.user || currentUser;
     
           showApp();
-          hideLoader(); // 👈 ADD THIS
+          hideLoader();
     
           await loadUserAnalysesFromServer();
           await loadUserReviewsFromServer();
@@ -1208,40 +1219,35 @@ window.onload = function() {
     
         } else {
           handleLogout();
-          hideLoader(); // 👈 ADD THIS
+          hideLoader(); 
         }
     
       } catch (error) {
         console.error('Auth verification failed:', error);
         handleLogout();
-        hideLoader(); // 👈 ADD THIS
+        hideLoader(); 
       }
     }
-    // Show auth screen
+  
     function showAuthScreen() {
       document.getElementById('authContainer').style.display = 'flex';
       document.getElementById('appContainer').style.display = 'none';
     }
 
     function showApp() {
-  document.getElementById('authContainer').style.display = 'none';
-  document.getElementById('appContainer').style.display = 'block';
-  document.getElementById('userEmail').textContent = currentUser.email;
-
-  // initialize news controls (wires refresh, search, auto-refresh etc.)
-  try {
-    initNewsControls();
-  } catch (e) {
-    console.warn('initNewsControls failed:', e);
-  }
-
-  // initial news load (use default opts or previously selected)
-  loadLiveNews({ country: 'in', pageSize: 6 });
-
+      document.getElementById('authContainer').style.display = 'none';
+      document.getElementById('appContainer').style.display = 'block';
+      document.getElementById('userEmail').textContent = currentUser.email;
+      try {
+        initNewsControls();
+      } catch (e) {
+        console.warn('initNewsControls failed:', e);
+      }
+      
+      loadLiveNews({ country: 'in', pageSize: 6 });
       hideLoader();
-}
+    }
 
-    // Toggle between login and register
     function showRegister(event) {
       event.preventDefault();
       document.getElementById('loginForm').style.display = 'none';
@@ -1256,7 +1262,6 @@ window.onload = function() {
       document.getElementById('loginError').style.display = 'none';
     }
 
-    // Handle registration
     async function handleRegister(event) {
       event.preventDefault();
       const email = document.getElementById('registerEmail').value;
@@ -1280,7 +1285,6 @@ window.onload = function() {
         const data = await response.json();
 
         if (response.ok) {
-          // Show login form after successful registration
           document.getElementById('registerFormElement').reset();
           const loginEvent = { preventDefault: () => {} };
           showLogin(loginEvent);
@@ -1298,109 +1302,108 @@ window.onload = function() {
       }
     }
 
-    // Handle login
+
     async function handleLogin(event) {
-  event.preventDefault();
-  const email = document.getElementById('loginEmail').value;
-  const password = document.getElementById('loginPassword').value;
-  const errorDiv = document.getElementById('loginError');
-  const btn = document.getElementById('loginBtn');
+      event.preventDefault();
+      const email = document.getElementById('loginEmail').value;
+      const password = document.getElementById('loginPassword').value;
+      const errorDiv = document.getElementById('loginError');
+      const btn = document.getElementById('loginBtn');
 
-  btn.disabled = true;
-  btn.textContent = 'Logging in...';
-  errorDiv.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Logging in...';
+      errorDiv.style.display = 'none';
 
-  try {
-    const response = await fetch(`${API_BASE}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
+      try {
+        const response = await fetch(`${API_BASE}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
 
-    const data = await response.json();
+        const data = await response.json();
 
-    if (response.ok) {
-      authToken = data.token;
-      currentUser = { email: data.email, userId: data.userId, isAdmin: data.isAdmin };
-      // persist
-      localStorage.setItem('fc_token', authToken);
-      localStorage.setItem('fc_user', JSON.stringify(currentUser));
-      document.getElementById('loginFormElement').reset();
-      showApp();
-      // load analyses and reviews
-      await loadUserAnalysesFromServer();
-      await loadUserReviewsFromServer();
-      await loadDashboard();
-    } else {
-      errorDiv.textContent = data.error || data.message || 'Login failed. Please check your credentials.';
-      errorDiv.style.display = 'block';
+        if (response.ok) {
+          authToken = data.token;
+          currentUser = { email: data.email, userId: data.userId, isAdmin: data.isAdmin };
+          // persist
+          localStorage.setItem('fc_token', authToken);
+          localStorage.setItem('fc_user', JSON.stringify(currentUser));
+          document.getElementById('loginFormElement').reset();
+          showApp();
+          // load analyses and reviews
+          await loadUserAnalysesFromServer();
+          await loadUserReviewsFromServer();
+          await loadDashboard();
+        } else {
+          errorDiv.textContent = data.error || data.message || 'Login failed. Please check your credentials.';
+          errorDiv.style.display = 'block';
+        }
+      } catch (error) {
+        errorDiv.textContent = 'Connection error. Please check if the server is running.';
+        errorDiv.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Login';
+      }
     }
-  } catch (error) {
-    errorDiv.textContent = 'Connection error. Please check if the server is running.';
-    errorDiv.style.display = 'block';
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Login';
-  }
-}
 
-    // Handle logout
     function handleLogout() {
-  authToken = null;
-  currentUser = null;
-  userAnalyses = [];
-  userReviews = [];
-  localStorage.removeItem('fc_token');
-  localStorage.removeItem('fc_user');
-  showAuthScreen();
-  document.getElementById('loginFormElement').reset();
-  document.getElementById('loginError').style.display = 'none';
-}
-  async function loadUserReviewsFromServer() {
-  if (!authToken) return;
-  try {
-    const res = await fetch(`${API_BASE}/user/reviews`, {
-      headers: { 'Authorization': `Bearer ${authToken}` }
-    });
-    if (res.ok) {
-      const data = await res.json();
-      userReviews = data.reviews || [];
-      // refresh reviews view if currently open
-      const reviewsSection = document.getElementById('reviewsSection');
-      if (reviewsSection.classList.contains('active')) loadUserReviews();
-    } else if (res.status === 401) {
-      handleLogout();
+      authToken = null;
+      currentUser = null;
+      userAnalyses = [];
+      userReviews = [];
+      localStorage.removeItem('fc_token');
+      localStorage.removeItem('fc_user');
+      showAuthScreen();
+      document.getElementById('loginFormElement').reset();
+      document.getElementById('loginError').style.display = 'none';
     }
-  } catch (e) {
-    console.error('Failed to load user reviews:', e);
-  }
-}
+
+    async function loadUserReviewsFromServer() {
+      if (!authToken) return;
+      try {
+        const res = await fetch(`${API_BASE}/user/reviews`, {
+          headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          userReviews = data.reviews || [];
+          // refresh reviews view if currently open
+          const reviewsSection = document.getElementById('reviewsSection');
+          if (reviewsSection.classList.contains('active')) loadUserReviews();
+        } else if (res.status === 401) {
+          handleLogout();
+        }
+      } catch (e) {
+        console.error('Failed to load user reviews:', e);
+      }
+    }
 
 
     async function loadUserAnalysesFromServer() {
-  if (!authToken) return;
-  try {
-    const response = await fetch(`${API_BASE}/user/analyses`, {
-      headers: { 'Authorization': `Bearer ${authToken}` }
-    });
-    if (response.ok) {
-      const data = await response.json();
-      userAnalyses = data.analyses || [];
-      renderRecentAnalyses(); // refresh dashboard table
-    } else if (response.status === 401) {
-      handleLogout();
+      if (!authToken) return;
+      try {
+        const response = await fetch(`${API_BASE}/user/analyses`, {
+          headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          userAnalyses = data.analyses || [];
+          renderRecentAnalyses(); // refresh dashboard table
+        } else if (response.status === 401) {
+          handleLogout();
+        }
+      } catch (e) {
+        console.error('Failed to load user analyses:', e);
+      }
     }
-  } catch (e) {
-    console.error('Failed to load user analyses:', e);
-  }
-}
 
-    // Load dashboard data
     async function loadDashboard() {
       if (!authToken) return;
       if (userAnalyses.length === 0) {
-  await loadUserAnalysesFromServer();
-}
+        await loadUserAnalysesFromServer();
+      }
       try {
         const response = await fetch(`${API_BASE}/user/analytics`, {
           headers: {
@@ -1425,56 +1428,54 @@ window.onload = function() {
           renderRecentAnalyses();
         }
       } catch (error) {
-        console.error('Failed to load analytics:', error);
-        // Use local data
-        document.getElementById('totalAnalyses').textContent = userAnalyses.length;
-        document.getElementById('yourReviews').textContent = userReviews.length;
-        document.getElementById('accuracyScore').textContent = '0%';
-        renderRecentAnalyses();
+          console.error('Failed to load analytics:', error);
+          // Use local data
+          document.getElementById('totalAnalyses').textContent = userAnalyses.length;
+          document.getElementById('yourReviews').textContent = userReviews.length;
+          document.getElementById('accuracyScore').textContent = '0%';
+          renderRecentAnalyses();
+        }
+        loadLiveNews({ country: 'in', pageSize: 6 });
       }
-      loadLiveNews({ country: 'in', pageSize: 6 });
-    }
 
     function renderRecentAnalyses() {
-  const container = document.getElementById('recentAnalysesTable');
-  if (!container) {
-    console.warn('renderRecentAnalyses: #recentAnalysesTable not found in DOM. Skipping render.');
-    return;
-  }
+      const container = document.getElementById('recentAnalysesTable');
+      if (!container) {
+        console.warn('renderRecentAnalyses: #recentAnalysesTable not found in DOM. Skipping render.');
+        return;
+      }
 
-  if (!userAnalyses || userAnalyses.length === 0) {
-    container.innerHTML = '<div class="empty-state">No analyses yet. Start by analyzing some news!</div>';
-    return;
-  }
+      if (!userAnalyses || userAnalyses.length === 0) {
+        container.innerHTML = '<div class="empty-state">No analyses yet. Start by analyzing some news!</div>';
+        return;
+      }
 
-  const recent = userAnalyses.slice(0, 5); // already sorted by server desc
-  let html = '<table><thead><tr><th>Date</th><th>Headline</th><th>Verdict</th><th>Confidence</th><th>Action</th></tr></thead><tbody>';
+      const recent = userAnalyses.slice(0, 5); // already sorted by server desc
+      let html = '<table><thead><tr><th>Date</th><th>Headline</th><th>Verdict</th><th>Confidence</th><th>Action</th></tr></thead><tbody>';
 
-  recent.forEach(analysis => {
-    const dateStr = new Date(analysis.createdAt || analysis.date || Date.now()).toLocaleDateString();
-    const headline = analysis.headline || analysis.url || '-';
-    const verdict = (analysis.verdict || 'Uncertain');
-    const confidence = (typeof analysis.confidence !== 'undefined' && analysis.confidence !== null) ? analysis.confidence : '-';
-    const aid = analysis.analysisId || analysis.id || analysis._id || '';
+      recent.forEach(analysis => {
+        const dateStr = new Date(analysis.createdAt || analysis.date || Date.now()).toLocaleDateString();
+        const headline = analysis.headline || analysis.url || '-';
+        const verdict = (analysis.verdict || 'Uncertain');
+        const confidence = (typeof analysis.confidence !== 'undefined' && analysis.confidence !== null) ? analysis.confidence : '-';
+        const aid = analysis.analysisId || analysis.id || analysis._id || '';
 
-    html += `
-      <tr>
-        <td>${dateStr}</td>
-        <td>${escapeHtml(headline)}</td>
-        <td><span class="verdict ${String(verdict).toLowerCase()}">${escapeHtml(verdict)}</span></td>
-        <td>${escapeHtml(String(confidence))}%</td>
-        <td><button class="btn" style="width:auto;padding:6px 12px;font-size:14px;" onclick="viewDetailsById('${aid}')">View</button></td>
-      </tr>
-    `;
-  });
+        html += `
+          <tr>
+            <td>${dateStr}</td>
+            <td>${escapeHtml(headline)}</td>
+            <td><span class="verdict ${String(verdict).toLowerCase()}">${escapeHtml(verdict)}</span></td>
+            <td>${escapeHtml(String(confidence))}%</td>
+            <td><button class="btn" style="width:auto;padding:6px 12px;font-size:14px;" onclick="viewDetailsById('${aid}')">View</button></td>
+          </tr>
+        `;
+      });
 
-  html += '</tbody></table>';
-  container.innerHTML = html;
-}
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
 
 
-
-    // Show section
     function showSection(sectionName) {
       const sections = document.querySelectorAll('.section');
       sections.forEach(section => section.classList.remove('active'));
@@ -1486,7 +1487,6 @@ window.onload = function() {
       if (event && event.target) {
         event.target.classList.add('active');
       } else {
-        // Find and activate the correct nav link
         links.forEach(link => {
           if (link.onclick && link.onclick.toString().includes(sectionName)) {
             link.classList.add('active');
@@ -1507,7 +1507,6 @@ window.onload = function() {
       }
     }
 
-    // Show tab
     function showTab(tabName) {
       const tabs = document.querySelectorAll('.tab');
       tabs.forEach(tab => tab.classList.remove('active'));
@@ -1522,7 +1521,6 @@ window.onload = function() {
       document.getElementById('analysisResults').style.display = 'none';
     }
 
-    // Handle analyze
     async function handleAnalyze(event, type) {
       event.preventDefault();
       if (!authToken) {
@@ -1572,31 +1570,27 @@ window.onload = function() {
         if (response.ok) {
           const data = await response.json();
           displayResults(data, headline || url);
-          
-          // Save to local array
           userAnalyses.unshift({
-  analysisId: data.analysisId || data.id || Date.now().toString(),
-  headline: headline || url || data.headline || data.url,
-  verdict: data.verdict || 'Uncertain',
-  confidence: data.confidence || 0,
-  lstmScore: data.lstmScore || 0,
-  cgpnnScore: data.cgpnnScore || 0,
-  mlScore: data.mlScore || data.combinedScore || 0,
-  modelScore: data.modelScore,
-  heuristicScore: data.heuristicScore,
-  bertScore: data.bertScore,
-  hasEvidence: data.hasEvidence,
-  fakeRisk: data.fakeRisk,
-  articleLike: data.articleLike,
-  trustedSource: data.trustedSource,
-  sampleReviews: data.sampleReviews || [],
-  communityVote: data.communityVote || {},
-  communityConsensus: data.communityConsensus || null,
-  createdAt: data.createdAt || new Date().toISOString()
-});
+          analysisId: data.analysisId || data.id || Date.now().toString(),
+          headline: headline || url || data.headline || data.url,
+          verdict: data.verdict || 'Uncertain',
+          confidence: data.confidence || 0,
+          lstmScore: data.lstmScore || 0,
+          cgpnnScore: data.cgpnnScore || 0,
+          mlScore: data.mlScore || data.combinedScore || 0,
+          modelScore: data.modelScore,
+          heuristicScore: data.heuristicScore,
+          bertScore: data.bertScore,
+          hasEvidence: data.hasEvidence,
+          fakeRisk: data.fakeRisk,
+          articleLike: data.articleLike,
+          trustedSource: data.trustedSource,
+          sampleReviews: data.sampleReviews || [],
+          communityVote: data.communityVote || {},
+          communityConsensus: data.communityConsensus || null,
+          createdAt: data.createdAt || new Date().toISOString()
+        });
 
-
-          // Clear form
           event.target.reset();
         } else if (response.status === 401) {
           handleLogout();
@@ -1612,7 +1606,6 @@ window.onload = function() {
       }
     }
 
-    // Display results
     function displayResults(data, headline) {
       const verdict = data.verdict || 'Uncertain';
       const confidence = data.confidence || 0;
@@ -1630,8 +1623,6 @@ window.onload = function() {
       const articleLike = data.articleLike;
       const trustedSource = data.trustedSource;
 
-      // Store analysis ID for reviews
-      
       let verdictClass = 'uncertain';
       if (verdict.toLowerCase().includes('real') || verdict.toLowerCase().includes('true')) {
         verdictClass = 'real';
@@ -1644,38 +1635,37 @@ window.onload = function() {
       document.getElementById('confidenceBar').style.background =
         verdictClass === 'real' ? '#10b981' :
         verdictClass === 'fake' ? '#ef4444' : '#f59e0b';
-      
       document.getElementById('verdictDisplay').innerHTML = `
-      <h3>Verdict: 
-        <span class="verdict ${verdictClass}">
-          ${escapeHtml(verdict)}
-        </span>
-      </h3>
-      <p style="color:#6b7280;margin-top:10px;">
-        Analyzing: ${escapeHtml(headline)}
-      </p>
-    `;
+        <h3>Verdict: 
+          <span class="verdict ${verdictClass}">
+            ${escapeHtml(verdict)}
+          </span>
+        </h3>
+        <p style="color:#6b7280;margin-top:10px;">
+          Analyzing: ${escapeHtml(headline)}
+        </p>
+      `;
       
       document.getElementById('confidenceScore').textContent = confidence + '%';
       document.getElementById('lstmScore').textContent = modelScore != null ? modelScore + '%' : lstmScore + '%';
       document.getElementById('cgpnnScore').textContent = bertScore != null ? bertScore + '%' : (heuristicScore != null ? heuristicScore + '%' : cgpnnScore + '%');
       document.getElementById('combinedScore').textContent = combinedScore + '%';
       const reasons = [];
-      if (fakeRisk) reasons.push('Fake-news language or risky claim pattern detected.');
-      if (trustedSource) reasons.push('Known reliable source/domain detected.');
-      if (articleLike) reasons.push('Article-style context detected: enough body text, details, and low manipulation risk.');
-      if (hasEvidence === false) reasons.push('No strong source, quote, date, authority, or evidence was found, so it cannot be marked real.');
-      if (bertScore == null) reasons.push('Local BERT model is not configured; using logistic regression plus strict text reasoning.');
-      document.getElementById('reasoningNote').textContent = reasons.join(' ');
-      displayConsensus(data.communityConsensus || null);
 
-      document.getElementById('analysisResults').style.display = 'block';
-      
-      // Load community reviews
+      if (fakeRisk) reasons.push('⚠️ Fake-news patterns detected');
+      if (trustedSource) reasons.push('✅ Trusted source detected');
+      if (articleLike) reasons.push('📰 Structured article format');
+      if (hasEvidence === false) reasons.push('❌ No verifiable evidence found');
+      if (bertScore == null) reasons.push('🤖 Using ML + heuristics (no BERT)');
+
+      if (reasons.length === 0) {
+        reasons.push('No strong signals detected — prediction based on model probability.');
+      }
+
+      document.getElementById('reasoningNote').innerHTML = reasons.join('<br>');
       loadCommunityReviews(currentAnalysisId);
     }
 
-    // Render history
     function renderHistory() {
       const container = document.getElementById('historyTable');
       
@@ -1706,51 +1696,47 @@ window.onload = function() {
       container.innerHTML = html;
     }
 
-    // View details
     function viewDetails(index) {
       const analysis = userAnalyses[index];
       displayResults(analysis, analysis.headline);
       showSection('analyze');
       document.querySelectorAll('.nav-link')[1].classList.add('active');
     }
-function viewDetailsById(analysisId) {
-  const a = userAnalyses.find(x => (x.analysisId === analysisId || x.id === analysisId || x._id === analysisId));
-  if (a) {
-    displayResults({
-      analysisId: a.analysisId || a.id || a._id,
-      verdict: a.verdict,
-      confidence: a.confidence,
-      lstmScore: a.lstmScore || 0,
-      cgpnnScore: a.cgpnnScore || 0,
-      mlScore: a.mlScore || a.combinedScore || 0,
-      modelScore: a.modelScore,
-      heuristicScore: a.heuristicScore,
-      bertScore: a.bertScore,
-      hasEvidence: a.hasEvidence,
-      fakeRisk: a.fakeRisk,
-      articleLike: a.articleLike,
-      trustedSource: a.trustedSource,
-      communityConsensus: a.communityConsensus || null,
-      createdAt: a.createdAt
-    }, a.headline || a.url);
-    currentAnalysisId = a.analysisId || a.id || a._id;
-    // display sample reviews if present
-    if (a.sampleReviews && a.sampleReviews.length) {
-      displayCommunityReviews(a.sampleReviews);
-    } else {
-      loadCommunityReviews(currentAnalysisId);
+    function viewDetailsById(analysisId) {
+      const a = userAnalyses.find(x => (x.analysisId === analysisId || x.id === analysisId || x._id === analysisId));
+      if (a) {
+        displayResults({
+          analysisId: a.analysisId || a.id || a._id,
+          verdict: a.verdict,
+          confidence: a.confidence,
+          lstmScore: a.lstmScore || 0,
+          cgpnnScore: a.cgpnnScore || 0,
+          mlScore: a.mlScore || a.combinedScore || 0,
+          modelScore: a.modelScore,
+          heuristicScore: a.heuristicScore,
+          bertScore: a.bertScore,
+          hasEvidence: a.hasEvidence,
+          fakeRisk: a.fakeRisk,
+          articleLike: a.articleLike,
+          trustedSource: a.trustedSource,
+          communityConsensus: a.communityConsensus || null,
+          createdAt: a.createdAt
+        }, a.headline || a.url);
+        currentAnalysisId = a.analysisId || a.id || a._id;
+        if (a.sampleReviews && a.sampleReviews.length) {
+          displayCommunityReviews(a.sampleReviews);
+        } else {
+          loadCommunityReviews(currentAnalysisId);
+        }
+        showSection('analyze');
+      } else {
+        currentAnalysisId = analysisId;
+        displayResults({ verdict: 'Uncertain', confidence: 50 }, 'Article');
+        loadCommunityReviews(currentAnalysisId);
+        showSection('analyze');
+      }
     }
-    showSection('analyze');
-  } else {
-    // fallback: try loading reviews remotely
-    currentAnalysisId = analysisId;
-    displayResults({ verdict: 'Uncertain', confidence: 50 }, 'Article');
-    loadCommunityReviews(currentAnalysisId);
-    showSection('analyze');
-  }
-}
 
-    // Open review modal
     function openReviewModal() {
       if (!currentAnalysisId) {
         alert('No analysis selected. Please analyze news first.');
@@ -1759,13 +1745,11 @@ function viewDetailsById(analysisId) {
       document.getElementById('reviewModal').classList.add('active');
     }
 
-    // Close review modal
     function closeReviewModal() {
       document.getElementById('reviewModal').classList.remove('active');
       document.getElementById('reviewForm').reset();
     }
 
-    // Handle submit review
     async function handleSubmitReview(event) {
       event.preventDefault();
       if (!authToken) {
@@ -1797,7 +1781,6 @@ function viewDetailsById(analysisId) {
         if (response.ok) {
           const data = await response.json();
           
-          // Add to local reviews
           userReviews.push({
             analysisId: currentAnalysisId,
             verdict: verdict,
@@ -1809,7 +1792,6 @@ function viewDetailsById(analysisId) {
           closeReviewModal();
           alert('Review submitted successfully!');
           
-          // Reload community reviews
           loadCommunityReviews(currentAnalysisId);
         } else if (response.status === 401) {
           handleLogout();
@@ -1819,7 +1801,6 @@ function viewDetailsById(analysisId) {
         }
       } catch (error) {
         console.error('Failed to submit review:', error);
-        // Save locally even if API fails
         userReviews.push({
           analysisId: currentAnalysisId,
           verdict: verdict,
@@ -1836,7 +1817,6 @@ function viewDetailsById(analysisId) {
       }
     }
 
-    // Load community reviews
     async function loadCommunityReviews(analysisId) {
       const container = document.getElementById('communityReviewsList');
       container.innerHTML = '<div class="loading">Loading reviews...</div>';
@@ -1853,7 +1833,6 @@ function viewDetailsById(analysisId) {
           const reviews = data.reviews || data || [];
           displayCommunityReviews(reviews);
         } else {
-          // Show local reviews if API fails
           const localReviews = userReviews.filter(r => r.analysisId === analysisId);
           displayCommunityReviews(localReviews);
         }
@@ -1866,7 +1845,6 @@ function viewDetailsById(analysisId) {
         }
       } catch (error) {
         console.error('Failed to load reviews:', error);
-        // Show local reviews
         const localReviews = userReviews.filter(r => r.analysisId === analysisId);
         displayCommunityReviews(localReviews);
         displayConsensus(calculateLocalConsensus(analysisId));
@@ -1916,34 +1894,32 @@ function viewDetailsById(analysisId) {
         </p>
       `;
     }
-
-    // Display community reviews
+ 
     function displayCommunityReviews(reviews) {
-  const container = document.getElementById('communityReviewsList');
-  if (!reviews || reviews.length === 0) {
-    container.innerHTML = '<div class="empty-state">No reviews yet. Be the first to review!</div>';
-    return;
-  }
-  let html = '';
-  reviews.forEach(review => {
-    const username = review.username || review.user || 'Anonymous';
-    const v = (review.verdict || 'uncertain').toLowerCase();
-    const verdictText = v === 'real' ? '✓ Real' : v === 'fake' ? '✗ Fake' : '? Uncertain';
-    html += `
-      <div class="review-item">
-        <div class="review-header">
-          <span class="review-user">${escapeHtml(username)}</span>
-          <span class="review-verdict ${escapeHtml(v)}">${escapeHtml(verdictText)}</span>
-        </div>
-          <div class="review-text">${escapeHtml(review.text || '')}</div>
-        <div style="color:#6b7280;font-size:12px;margin-top:8px;">${new Date(review.timestamp || review.date || Date.now()).toLocaleString()}</div>
-      </div>
-    `;
-  });
-  container.innerHTML = html;
-}
+      const container = document.getElementById('communityReviewsList');
+      if (!reviews || reviews.length === 0) {
+        container.innerHTML = '<div class="empty-state">No reviews yet. Be the first to review!</div>';
+        return;
+      }
+      let html = '';
+      reviews.forEach(review => {
+        const username = review.username || review.user || 'Anonymous';
+        const v = (review.verdict || 'uncertain').toLowerCase();
+        const verdictText = v === 'real' ? '✓ Real' : v === 'fake' ? '✗ Fake' : '? Uncertain';
+        html += `
+          <div class="review-item">
+            <div class="review-header">
+              <span class="review-user">${escapeHtml(username)}</span>
+              <span class="review-verdict ${escapeHtml(v)}">${escapeHtml(verdictText)}</span>
+            </div>
+              <div class="review-text">${escapeHtml(review.text || '')}</div>
+            <div style="color:#6b7280;font-size:12px;margin-top:8px;">${new Date(review.timestamp || review.date || Date.now()).toLocaleString()}</div>
+          </div>
+        `;
+      });
+      container.innerHTML = html;
+    }
 
-    // Load sources
     async function loadSources() {
       const container = document.getElementById('sourcesList');
       container.innerHTML = '<div class="loading">Loading sources...</div>';
@@ -1960,7 +1936,6 @@ function viewDetailsById(analysisId) {
           const sources = data.sources || data || [];
           displaySources(sources);
         } else {
-          // Show default sources if API fails
           displaySources(getDefaultSources());
         }
       } catch (error) {
@@ -1969,7 +1944,6 @@ function viewDetailsById(analysisId) {
       }
     }
 
-    // Get default sources
     function getDefaultSources() {
       return [
         { name: 'BBC News', url: 'https://www.bbc.com', rating: 4.5 },
@@ -1980,10 +1954,8 @@ function viewDetailsById(analysisId) {
       ];
     }
 
-    // Display sources
     function displaySources(sources) {
       const container = document.getElementById('sourcesList');
-      
       if (sources.length === 0) {
         container.innerHTML = '<div class="empty-state">No sources available.</div>';
         return;
@@ -2001,16 +1973,13 @@ function viewDetailsById(analysisId) {
             </div>
           `;
       });
-      
       container.innerHTML = html;
     }
 
-    // Rate source
     function rateSource(sourceName) {
       alert(`Rating feature for ${sourceName} coming soon!`);
     }
 
-    // Load user reviews
     function loadUserReviews() {
       const container = document.getElementById('userReviewsList');
       
@@ -2042,183 +2011,162 @@ function viewDetailsById(analysisId) {
       
       container.innerHTML = html;
     }
-// Call this from loadDashboard() or window.onload when app visible
 
-function renderLiveNews(articles) {
-  const container = document.getElementById('liveNewsContainer');
+    function renderLiveNews(articles) {
+      const container = document.getElementById('liveNewsContainer');
 
-  if (!articles || articles.length === 0) {
-    container.innerHTML = '<div class="empty-state">No news found</div>';
-    return;
-  }
+      if (!articles || articles.length === 0) {
+        container.innerHTML = '<div class="empty-state">No news found</div>';
+        return;
+      }
 
-  container.innerHTML = articles.map(a => `
-    <div class="news-card">
+      container.innerHTML = articles.map(a => `
+        <div class="news-card">
 
-      ${a.urlToImage ? `<img 
-        src="${a.urlToImage || 'https://via.placeholder.com/400x200?text=No+Image'}" 
-        class="news-image"
-        onerror="this.src='https://via.placeholder.com/400x200?text=Image+Error'"
-      >` : ''}
+          ${a.urlToImage ? `<img 
+            src="${a.urlToImage || 'https://via.placeholder.com/400x200?text=No+Image'}" 
+            class="news-image"
+            onerror="this.src='https://via.placeholder.com/400x200?text=Image+Error'"
+          >` : ''}
 
-      <h3 class="news-title">${a.title || 'No title'}</h3>
+          <h3 class="news-title">${a.title || 'No title'}</h3>
 
-      <p class="news-desc">
-        ${a.description ? a.description.substring(0, 120) + '...' : ''}
-      </p>
+          <p class="news-desc">
+            ${a.description ? a.description.substring(0, 120) + '...' : ''}
+          </p>
 
-      <div class="news-footer">
-        <span class="news-source">📰 ${a.source || 'Unknown'}</span>
-      </div>
+          <div class="news-footer">
+            <span class="news-source">📰 ${a.source || 'Unknown'}</span>
+          </div>
 
-    <div class="news-actions">
-      <button class="btn" style="width:auto;padding:6px 12px;font-size:14px;"
-        onclick="verifyNews('${encodeURIComponent(JSON.stringify({
-          title: a.title || '',
-          description: a.description || ''
-        }))}')">
-        Verify
-      </button>
-      <button class="btn" style="width:auto;padding:6px 12px;font-size:14px;">
-      <a href="${a.url}" target="_blank" style="text-decoration:none;">
-        Source
-      </a>
-      </button>
-    </div>
+        <div class="news-actions">
+          <button class="btn" style="width:auto;padding:6px 12px;font-size:14px;"
+            onclick="verifyNews('${encodeURIComponent(JSON.stringify({
+              title: a.title || '',
+              description: a.description || ''
+            }))}')">
+            Verify
+          </button>
+          <button class="btn" style="width:auto;padding:6px 12px;font-size:14px;">
+          <a href="${a.url}" target="_blank" style="text-decoration:none;">
+            Source
+          </a>
+          </button>
+        </div>
 
-    </div>
-  `).join('');
-}
+        </div>
+      `).join('');
+    }
     
-// --- News controls wiring & enhanced loadLiveNews integration ---
-function verifyNews(encodedData) {
-  const data = JSON.parse(decodeURIComponent(encodedData));
-
-  // Switch to analyze section
-  showSection('analyze');
-
-  // Switch to TEXT tab (important)
-  showTab('text');
-
-  // Autofill fields
-  document.getElementById('textHeadline').value = data.title || '';
-  document.getElementById('textContent').value = data.description || '';
-
-  // Scroll to form (UX improvement)
-  document.getElementById('textHeadline').scrollIntoView({
-    behavior: 'smooth',
-    block: 'center'
-  });
-  setTimeout(() => {
-  document.getElementById('textAnalyzeForm').dispatchEvent(new Event('submit'));
-}, 100);
-}
-// keep a reference to the current auto-refresh timer
-let _liveNewsAutoRefreshTimer = null;
-// keep last used options
-let _liveNewsLastOpts = { q: '', category: '', country: 'in', pageSize: 10 };
-
-// debounce helper
-function debounce(fn, wait) {
-  let t;
-  return function (...args) {
-    clearTimeout(t);
-    t = setTimeout(() => fn.apply(this, args), wait);
-  };
-}
-async function loadLiveNews(opts = {}) {
-  const container = document.getElementById('liveNewsContainer');
-  if (!container) return;
-
-  container.innerHTML = '<div class="loading">Loading live headlines...</div>';
-
-  try {
-    const country = document.getElementById('newsCountrySelect')?.value || 'in';
-    const category = document.getElementById('newsCategorySelect')?.value || '';
-
-    // ✅ FIXED: await response
-    const resp = await fetch(`/api/news`);
-    
-    // ✅ FIXED: check response
-    if (!resp.ok) {
-      container.innerHTML = '<div class="empty-state">Failed to load news</div>';
-      return;
+    function verifyNews(encodedData) {
+      const data = JSON.parse(decodeURIComponent(encodedData));
+      
+      showSection('analyze');
+      showTab('text');
+      document.getElementById('textHeadline').value = data.title || '';
+      document.getElementById('textContent').value = data.description || '';
+      document.getElementById('textHeadline').scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      });
+      setTimeout(() => {
+      document.getElementById('textAnalyzeForm').dispatchEvent(new Event('submit'));
+    }, 100);
     }
 
-    // ✅ FIXED: parse JSON
-    const data = await resp.json();
+    let _liveNewsAutoRefreshTimer = null;
+    let _liveNewsLastOpts = { q: '', category: '', country: 'in', pageSize: 10 };
 
-    console.log("NEWS DATA:", data);
+    function debounce(fn, wait) {
+      let t;
+      return function (...args) {
+        clearTimeout(t);
+        t = setTimeout(() => fn.apply(this, args), wait);
+      };
+    }
+    async function loadLiveNews(opts = {}) {
+      const container = document.getElementById('liveNewsContainer');
+      if (!container) return;
 
-    const articles = data.articles || [];
+      container.innerHTML = '<div class="loading">Loading live headlines...</div>';
 
-    // ✅ FIXED: render
-    renderLiveNews(articles);
+      try {
+        const country = document.getElementById('newsCountrySelect')?.value || 'in';
+        const category = document.getElementById('newsCategorySelect')?.value || '';
+        const resp = await fetch(`/api/news`);
+       
+        if (!resp.ok) {
+          container.innerHTML = '<div class="empty-state">Failed to load news</div>';
+          return;
+        }
 
-  } catch (err) {
-    console.error('Live news load failed', err);
-    container.innerHTML = '<div class="empty-state">Error loading news</div>';
-  }
-}
-// Attach event listeners to the controls (call once after page/app ready)
-function initNewsControls() {
-  const searchInput = document.getElementById('newsSearchInput');
-  const categorySelect = document.getElementById('newsCategorySelect');
-  const countrySelect = document.getElementById('newsCountrySelect');
-  const pageSizeSelect = document.getElementById('newsPageSizeSelect');
-  const refreshBtn = document.getElementById('newsRefreshBtn');
-  const autoRefreshSelect = document.getElementById('newsAutoRefresh');
+        const data = await resp.json();
+        console.log("NEWS DATA:", data);
+        const articles = data.articles || [];
+        renderLiveNews(articles);
 
-  if (!searchInput || !categorySelect || !countrySelect || !pageSizeSelect || !refreshBtn) {
-    console.warn("News controls not found in DOM");
-    return;
-  }
-
-  // search (debounced)
-  const debouncedSearch = debounce(() => {
-    loadLiveNews();
-  }, 400);
-
-  searchInput.addEventListener('input', debouncedSearch);
-
-  categorySelect.addEventListener('change', () => loadLiveNews());
-  countrySelect.addEventListener('change', () => loadLiveNews());
-  pageSizeSelect.addEventListener('change', () => loadLiveNews());
-
-  refreshBtn.addEventListener('click', () => loadLiveNews());
-
-  // auto-refresh
-  function resetAutoRefresh() {
-    if (_liveNewsAutoRefreshTimer) {
-      clearInterval(_liveNewsAutoRefreshTimer);
+      } catch (err) {
+        console.error('Live news load failed', err);
+        container.innerHTML = '<div class="empty-state">Error loading news</div>';
+      }
     }
 
-    const t = parseInt(autoRefreshSelect.value, 10) || 0;
+    function initNewsControls() {
+      const searchInput = document.getElementById('newsSearchInput');
+      const categorySelect = document.getElementById('newsCategorySelect');
+      const countrySelect = document.getElementById('newsCountrySelect');
+      const pageSizeSelect = document.getElementById('newsPageSizeSelect');
+      const refreshBtn = document.getElementById('newsRefreshBtn');
+      const autoRefreshSelect = document.getElementById('newsAutoRefresh');
 
-    if (t > 0) {
-      _liveNewsAutoRefreshTimer = setInterval(() => {
+      if (!searchInput || !categorySelect || !countrySelect || !pageSizeSelect || !refreshBtn) {
+        console.warn("News controls not found in DOM");
+        return;
+      }
+
+      // search (debounced)
+      const debouncedSearch = debounce(() => {
         loadLiveNews();
-      }, t * 1000);
+      }, 400);
+
+      searchInput.addEventListener('input', debouncedSearch);
+
+      categorySelect.addEventListener('change', () => loadLiveNews());
+      countrySelect.addEventListener('change', () => loadLiveNews());
+      pageSizeSelect.addEventListener('change', () => loadLiveNews());
+
+      refreshBtn.addEventListener('click', () => loadLiveNews());
+
+      function resetAutoRefresh() {
+        if (_liveNewsAutoRefreshTimer) {
+          clearInterval(_liveNewsAutoRefreshTimer);
+        }
+
+        const t = parseInt(autoRefreshSelect.value, 10) || 0;
+
+        if (t > 0) {
+          _liveNewsAutoRefreshTimer = setInterval(() => {
+            loadLiveNews();
+          }, t * 1000);
+        }
+      }
+
+      autoRefreshSelect.addEventListener('change', resetAutoRefresh);
+      resetAutoRefresh();
     }
-  }
 
-  autoRefreshSelect.addEventListener('change', resetAutoRefresh);
-  resetAutoRefresh();
-}
 
-// small helpers
-function truncate(s, n) {
-  if (!s) return '';
-  return s.length > n ? s.slice(0, n - 1) + '…' : s;
-}
-function escapeHtml(str) {
-  if (!str) return '';
-  return str.replace(/[&<>"']/g, function(m) {
-    return ({ '&': '&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[m];
-  });
-}
+    function truncate(s, n) {
+      if (!s) return '';
+      return s.length > n ? s.slice(0, n - 1) + '…' : s;
+    }
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/[&<>"']/g, function(m) {
+        return ({ '&': '&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[m];
+      });
+    }
 
-    // Close modal when clicking outside
     window.onclick = function(event) {
       const modal = document.getElementById('reviewModal');
       if (event.target === modal) {
@@ -2243,7 +2191,7 @@ function escapeHtml(str) {
       }
     }
     
-   window.addEventListener("load", () => {
+    window.addEventListener("load", () => {
       setTimeout(() => {
         const loader = document.getElementById("loadingScreen");
         if (loader) loader.classList.add("hidden");
